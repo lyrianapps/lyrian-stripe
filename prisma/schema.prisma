@@ -1,0 +1,89 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SubscriptionStatus {
+  active
+  trialing
+  past_due
+  canceled
+  incomplete
+}
+
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime
+}
+
+enum Plan {
+  free_trial
+  basic
+  pro
+}
+
+model BillingSession {
+  id                String    @id @default(cuid())
+  billingCustomerId String
+  appId             String
+  externalUserId    String
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+  usedAt            DateTime?
+
+  billingCustomer BillingCustomer @relation(fields: [billingCustomerId], references: [id])
+
+  @@index([billingCustomerId])
+  @@index([appId, externalUserId])
+}
+
+model App {
+  id   String @id
+  name String
+
+  customers BillingCustomer[]
+}
+
+model BillingCustomer {
+  id             String @id @default(cuid())
+  appId          String
+  externalUserId String
+
+  app App @relation(fields: [appId], references: [id])
+
+  stripeCustomerId String   @unique
+  email            String?
+  createdAt        DateTime @default(now())
+
+  subscriptions   Subscription[]
+  billingSessions BillingSession[]
+
+  @@unique([appId, externalUserId], name: "appId_externalUserId")
+}
+
+model Subscription {
+  id                   String @id @default(cuid())
+  billingCustomerId    String
+  stripeSubscriptionId String @unique
+
+  plan               Plan
+  status             SubscriptionStatus
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean
+
+  updatedAt DateTime @updatedAt
+
+  billingCustomer BillingCustomer @relation(fields: [billingCustomerId], references: [id])
+}
