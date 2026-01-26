@@ -15,7 +15,9 @@ export async function GET(req: NextRequest) {
     externalUserId: payload.sub as string,
   });
 
-  const response = NextResponse.redirect("/subscription");
+  // Build absolute URL for redirect
+  const origin = req.nextUrl.origin;
+  const response = NextResponse.redirect(`${origin}/subscription`);
   response.cookies.set("billing_session", sessionToken, {
     httpOnly: true,
     secure: true,
