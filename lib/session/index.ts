@@ -6,6 +6,7 @@ import {
   JWTTokenSchema,
   JWTPayloadSchema,
 } from "./schemas";
+import { logError } from "@/app/middleware/logger";
 
 const JWT_SECRET = process.env.SAAS_JWT_SECRET || "changeme";
 
@@ -13,51 +14,61 @@ export async function createSession(payload: {
   appId: string;
   externalUserId: string;
 }) {
-  // Validate payload
-  SessionPayloadSchema.parse(payload);
-  // Step 0: Ensure the App exists
-  await prisma.app.upsert({
-    where: { id: payload.appId },
-    update: {},
-    create: { id: payload.appId, name: payload.appId },
-  });
+  try {
+    // Validate payload
+    SessionPayloadSchema.parse(payload);
+    // Step 0: Ensure the App exists
+    await prisma.app.upsert({
+      where: { id: payload.appId },
+      update: {},
+      create: { id: payload.appId, name: payload.appId },
+    });
 
-  // Step 1: Find the BillingCustomer for this user
-  let customer = await prisma.billingCustomer.findUnique({
-    where: {
-      appId_externalUserId: {
-        appId: payload.appId,
-        externalUserId: payload.externalUserId,
-      },
-    },
-  });
-
-  // Optional: create the customer if it doesn't exist
-  if (!customer) {
-    customer = await prisma.billingCustomer.create({
-      data: {
-        appId: payload.appId,
-        externalUserId: payload.externalUserId,
-        stripeCustomerId: "placeholder_" + randomBytes(8).toString("hex"), // placeholder
+    // Step 1: Find the BillingCustomer for this user
+    let customer = await prisma.billingCustomer.findUnique({
+      where: {
+        appId_externalUserId: {
+          appId: payload.appId,
+          externalUserId: payload.externalUserId,
+        },
       },
     });
+
+    // Optional: create the customer if it doesn't exist
+    if (!customer) {
+      try {
+        customer = await prisma.billingCustomer.create({
+          data: {
+            appId: payload.appId,
+            externalUserId: payload.externalUserId,
+            stripeCustomerId: "placeholder_" + randomBytes(8).toString("hex"), // placeholder
+          },
+        });
+      } catch (err) {
+        console.error("Error creating BillingCustomer:", err);
+        throw err;
+      }
+    }
+
+    // Step 2: Create a BillingSession for this customer
+    const sessionId = "bs_" + randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 1 * 60 * 1000); // 1 min
+
+    await prisma.billingSession.create({
+      data: {
+        id: sessionId,
+        appId: payload.appId,
+        externalUserId: payload.externalUserId,
+        expiresAt,
+        billingCustomer: { connect: { id: customer.id } }, // ✅ connect to real customer
+      },
+    });
+
+    return sessionId;
+  } catch (err) {
+    console.error("createSession error:", err);
+    throw err;
   }
-
-  // Step 2: Create a BillingSession for this customer
-  const sessionId = "bs_" + randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + 1 * 60 * 1000); // 1 min
-
-  await prisma.billingSession.create({
-    data: {
-      id: sessionId,
-      appId: payload.appId,
-      externalUserId: payload.externalUserId,
-      expiresAt,
-      billingCustomer: { connect: { id: customer.id } }, // ✅ connect to real customer
-    },
-  });
-
-  return sessionId;
 }
 
 export function verifyJWT(token: string): JwtPayload {
@@ -86,11 +97,13 @@ export async function getSession(sessionId: string) {
     });
 
     if (!session) {
+      logError("Session not found!");
       throw new Error("Session not found");
     }
 
     // Expired?
     if (session.expiresAt < new Date()) {
+      logError("Session Expired");
       throw new Error("Session expired");
     }
 
@@ -109,7 +122,7 @@ export async function getSession(sessionId: string) {
 
     return payload;
   } catch (err) {
-    console.error("getSession error:", err);
+    logError(err, "getSession");
     return null;
   }
 }
