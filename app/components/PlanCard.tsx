@@ -9,6 +9,7 @@ interface PlanCardProps {
   price: string;
   current: boolean;
   onUpgrade: () => void;
+  loading?: boolean;
 }
 
 export function PlanCard({
@@ -43,6 +44,7 @@ export function PlanCard({
             variant="outline"
             iconLeft={<ArrowUpRight className="w-4 h-4" />}
             onClick={onUpgrade}
+            loading={!!(typeof loading !== "undefined" && loading)}
           >
             Upgrade
           </Button>

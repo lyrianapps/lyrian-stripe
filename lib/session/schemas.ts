@@ -31,3 +31,10 @@ export const SubscriptionRequestSchema = z.object({
 export const SubscriptionResponseSchema = z.object({
   subscription: z.any().nullable(),
 });
+
+export const CheckoutRequestSchema = z.object({
+  appId: z.string().min(1),
+  externalUserId: z.string().min(1),
+  plan: z.enum(["free_trial", "basic", "pro"]),
+  email: z.string().email().optional(),
+});

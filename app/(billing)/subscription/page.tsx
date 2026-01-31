@@ -36,7 +36,12 @@ export default async function SubscriptionPage() {
         Manage your subscription plan. Upgrade, downgrade, or cancel anytime.
       </Paragraph>
 
-      <SubscriptionPlans currentPlan={subscription?.plan ?? "free_trial"} />
+      <SubscriptionPlans
+        currentPlan={subscription?.plan ?? "free_trial"}
+        appId={session.appId}
+        externalUserId={session.externalUserId}
+        email={session.billingCustomer?.email || undefined}
+      />
     </div>
   );
 }

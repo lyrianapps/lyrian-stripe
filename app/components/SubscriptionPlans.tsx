@@ -5,16 +5,51 @@ import { Button } from "@/app/components/Button";
 import { PlanCard } from "@/app/components/PlanCard";
 import { XCircle } from "lucide-react";
 
+import { useState } from "react";
+
+type Props = {
+  currentPlan: string;
+  appId: string;
+  externalUserId: string;
+  email?: string;
+  onCancel?: () => void;
+};
+
 export default function SubscriptionPlans({
   currentPlan,
-}: {
-  currentPlan: string;
-}) {
+  appId,
+  externalUserId,
+  email,
+  onCancel,
+}: Props) {
+  const [loading, setLoading] = useState(false);
   const planStatus = {
     free_trial: "Free Trial (ends in 7 days)",
     basic: "Basic (renews Feb 1, 2026)",
     pro: "Pro (renews Feb 1, 2026)",
   };
+  // Handles upgrade to Basic plan
+  const handleUpgradeToBasic = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appId, externalUserId, plan: "basic", email }),
+      });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || "Failed to start checkout");
+      }
+    } catch (err) {
+      alert("Network error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <>
       <div className="space-y-6 mt-8">
@@ -23,7 +58,8 @@ export default function SubscriptionPlans({
           description="For individuals and small teams."
           price="$10/mo"
           current={currentPlan === "basic"}
-          onUpgrade={() => alert("Upgrade to Basic")}
+          onUpgrade={handleUpgradeToBasic}
+          loading={loading}
         />
         <PlanCard
           name="Pro"
@@ -34,10 +70,6 @@ export default function SubscriptionPlans({
         />
       </div>
       <div className="mt-10 border-t pt-6">
-        <Heading level={3} className="mb-2 text-red-600">
-          Cancel Subscription
-        </Heading>
-
         <Paragraph className="mb-2">
           <span className="font-semibold">Current Plan:</span>{" "}
           {planStatus[currentPlan as keyof typeof planStatus] || "Unknown"}
@@ -49,9 +81,9 @@ export default function SubscriptionPlans({
         <Button
           variant="outline"
           iconLeft={<XCircle className="w-4 h-4" />}
-          onClick={() => alert("Unsubscribe")}
+          onClick={onCancel}
         >
-          Unsubscribe
+          Cancel Subscription
         </Button>
       </div>
     </>

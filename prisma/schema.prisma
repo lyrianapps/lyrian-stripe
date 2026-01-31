@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client"
   output   = "../lib/generated/prisma"
@@ -21,31 +15,23 @@ enum SubscriptionStatus {
   incomplete
 }
 
-model StripeEvent {
-  id          String   @id
-  type        String
-  processedAt DateTime
-}
-
 enum Plan {
   free_trial
   basic
   pro
 }
 
-model BillingSession {
-  id                String    @id @default(cuid())
-  billingCustomerId String
-  appId             String
-  externalUserId    String
-  createdAt         DateTime  @default(now())
-  expiresAt         DateTime
-  usedAt            DateTime?
+enum BillingInterval {
+  month
+}
 
-  billingCustomer BillingCustomer @relation(fields: [billingCustomerId], references: [id])
-
-  @@index([billingCustomerId])
-  @@index([appId, externalUserId])
+enum SubscriptionEventType {
+  created
+  upgraded
+  downgraded
+  canceled
+  renewed
+  reactivated
 }
 
 model App {
@@ -72,18 +58,87 @@ model BillingCustomer {
   @@unique([appId, externalUserId], name: "appId_externalUserId")
 }
 
-model Subscription {
-  id                   String @id @default(cuid())
-  billingCustomerId    String
-  stripeSubscriptionId String @unique
+model BillingSession {
+  id                String @id @default(cuid())
+  billingCustomerId String
+  appId             String
+  externalUserId    String
 
-  plan               Plan
-  status             SubscriptionStatus
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  billingCustomer BillingCustomer @relation(fields: [billingCustomerId], references: [id])
+
+  @@index([billingCustomerId])
+  @@index([appId, externalUserId])
+}
+
+model PlanConfig {
+  id   String @id @default(cuid())
+  plan Plan
+
+  stripeProductId String
+  stripePriceId   String @unique
+
+  createdAt DateTime @default(now())
+
+  @@unique([plan])
+}
+
+model Subscription {
+  id                String @id @default(cuid())
+  billingCustomerId String
+
+  stripeSubscriptionId String @unique
+  stripePriceId        String
+  stripeProductId      String
+
+  plan   Plan
+  status SubscriptionStatus
+
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
   cancelAtPeriodEnd  Boolean
 
+  accessEndsAt DateTime?
+
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  billingCustomer BillingCustomer @relation(fields: [billingCustomerId], references: [id])
+  billingCustomer BillingCustomer     @relation(fields: [billingCustomerId], references: [id])
+  events          SubscriptionEvent[]
+
+  @@index([billingCustomerId])
+}
+
+model SubscriptionEvent {
+  id             String @id @default(cuid())
+  subscriptionId String
+
+  type     SubscriptionEventType
+  fromPlan Plan?
+  toPlan   Plan?
+
+  createdAt DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([subscriptionId])
+}
+
+model StripeEvent {
+  /**
+   * Stripe event ID (evt_*)
+   * Used for idempotency
+   */
+  id   String @id
+  type String
+
+  payload Json
+
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([type])
 }

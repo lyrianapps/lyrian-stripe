@@ -52,7 +52,7 @@ export async function createSession(payload: {
 
     // Step 2: Create a BillingSession for this customer
     const sessionId = "bs_" + randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 1 * 60 * 1000); // 1 min
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
 
     await prisma.billingSession.create({
       data: {
