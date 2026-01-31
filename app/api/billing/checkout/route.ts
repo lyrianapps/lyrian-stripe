@@ -95,6 +95,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Create Stripe Checkout Session
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
@@ -105,8 +106,8 @@ export async function POST(req: NextRequest) {
           quantity: 1,
         },
       ],
-      success_url: "https://example.com/success",
-      cancel_url: "https://example.com/cancel",
+      success_url: `${appUrl}/subscription/success`,
+      cancel_url: `${appUrl}/subscription`,
       metadata: {
         appId,
         externalUserId,

@@ -1,5 +1,5 @@
 "use client";
-import { Heading } from "@/app/components/Heading";
+
 import { Paragraph } from "@/app/components/Paragraph";
 import { Button } from "@/app/components/Button";
 import { PlanCard } from "@/app/components/PlanCard";
@@ -11,7 +11,6 @@ type Props = {
   currentPlan: string;
   appId: string;
   externalUserId: string;
-  email?: string;
   onCancel?: () => void;
 };
 
@@ -19,7 +18,6 @@ export default function SubscriptionPlans({
   currentPlan,
   appId,
   externalUserId,
-  email,
   onCancel,
 }: Props) {
   const [loading, setLoading] = useState(false);
@@ -35,7 +33,7 @@ export default function SubscriptionPlans({
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appId, externalUserId, plan: "basic", email }),
+        body: JSON.stringify({ appId, externalUserId, plan: "basic" }),
       });
       const data = await res.json();
       if (res.ok && data.url) {
