@@ -82,7 +82,12 @@ export function verifyJWT(token: string): JwtPayload {
   }
 }
 
-export async function getSession(sessionId: string) {
+export async function getSession(sessionId: string): Promise<{
+  sessionId: string;
+  appId: string;
+  externalUserId: string;
+  billingCustomerId: string;
+} | null> {
   try {
     // Validate format if you want (optional)
     if (!sessionId.startsWith("bs_")) {
