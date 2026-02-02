@@ -24,6 +24,7 @@ const PLAN_HIERARCHY: readonly Plan[] = ["free_trial", "basic", "pro"] as const;
 // PIPELINE INFRASTRUCTURE
 // =============================================================================
 
+/** Creates initial pipeline context with event data and default continuation state */
 function createContext<T>(
   event: Stripe.Event,
   initialData: T,
@@ -36,16 +37,19 @@ function createContext<T>(
   };
 }
 
+/** Stops pipeline execution and logs the halt reason */
 function halt<T>(ctx: PipelineContext<T>, reason?: string): PipelineContext<T> {
   if (reason) ctx.logs.push(`[HALT] ${reason}`);
   return { ...ctx, continue: false };
 }
 
+/** Appends a message to the pipeline's log buffer */
 function log<T>(ctx: PipelineContext<T>, message: string): PipelineContext<T> {
   ctx.logs.push(message);
   return ctx;
 }
 
+/** Executes pipeline steps sequentially, halting on failure and logging all accumulated messages */
 async function runPipeline<TIn, TOut>(
   ctx: PipelineContext<TIn>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,9 +58,18 @@ async function runPipeline<TIn, TOut>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let current: PipelineContext<any> = ctx;
 
-  for (const step of steps) {
-    if (!current.continue) break;
-    current = await step(current);
+  for (let i = 0; i < steps.length; i++) {
+    if (!current.continue) {
+      logger.warn(`[webhook] Pipeline halted at step ${i}`);
+      break;
+    }
+    logger.info(`[webhook] Running step ${i + 1}/${steps.length}`);
+    try {
+      current = await steps[i](current);
+    } catch (err) {
+      logError(err, `pipeline/step-${i}`);
+      throw err;
+    }
   }
 
   // Log all accumulated messages using winston logger
@@ -75,6 +88,7 @@ async function runPipeline<TIn, TOut>(
 // MAPPERS
 // =============================================================================
 
+/** Converts Stripe subscription status to internal SubscriptionStatus enum */
 function mapStripeStatus(
   status: Stripe.Subscription.Status,
 ): SubscriptionStatus {
@@ -91,6 +105,7 @@ function mapStripeStatus(
   return statusMap[status] ?? "incomplete";
 }
 
+/** Determines if plan change is an upgrade based on hierarchy (free_trial < basic < pro) */
 function isPlanUpgrade(fromPlan: Plan, toPlan: Plan): boolean {
   return PLAN_HIERARCHY.indexOf(toPlan) > PLAN_HIERARCHY.indexOf(fromPlan);
 }
@@ -99,12 +114,14 @@ function isPlanUpgrade(fromPlan: Plan, toPlan: Plan): boolean {
 // EXTRACTORS
 // =============================================================================
 
+/** Extracts customer ID string from Stripe customer object or ID */
 function extractStripeCustomerId(
   customer: string | Stripe.Customer | Stripe.DeletedCustomer,
 ): string {
   return typeof customer === "string" ? customer : customer.id;
 }
 
+/** Extracts invoice ID string from Stripe invoice object or ID */
 function extractInvoiceId(
   invoice: string | Stripe.Invoice | null,
 ): string | null {
@@ -112,6 +129,7 @@ function extractInvoiceId(
   return typeof invoice === "string" ? invoice : invoice.id;
 }
 
+/** Extracts price and product IDs from subscription's first line item */
 function extractSubscriptionItemData(
   subscription: Stripe.Subscription,
 ): SubscriptionItemData | null {
@@ -129,6 +147,7 @@ function extractSubscriptionItemData(
   return { priceId, productId };
 }
 
+/** Returns subscription end date from cancel_at or ended_at timestamps */
 function extractCancellationDate(
   subscription: Stripe.Subscription,
 ): Date | null {
@@ -141,31 +160,81 @@ function extractCancellationDate(
   return null;
 }
 
-// =============================================================================
-// DATA ACCESS
-// =============================================================================
-
+/** Looks up internal Plan enum from Stripe price ID via PlanConfig table */
 async function getPlanFromPriceId(priceId: string): Promise<Plan | null> {
+  logger.info(`[data] Looking up plan for price ID: ${priceId}`);
   const planConfig = await prisma.planConfig.findUnique({
     where: { stripePriceId: priceId },
   });
+  if (planConfig) {
+    logger.info(`[data] Found plan: ${planConfig.plan}`);
+  } else {
+    logger.warn(`[data] No plan config found for price ID: ${priceId}`);
+  }
   return planConfig?.plan ?? null;
 }
 
+/** Finds local subscription record by Stripe subscription ID */
 async function findSubscriptionByStripeId(stripeSubscriptionId: string) {
-  return prisma.subscription.findUnique({
+  logger.info(
+    `[data] Finding subscription by Stripe ID: ${stripeSubscriptionId}`,
+  );
+  const subscription = await prisma.subscription.findUnique({
     where: { stripeSubscriptionId },
   });
+  if (subscription) {
+    logger.info(
+      `[data] Found subscription: ${subscription.id} (status: ${subscription.status})`,
+    );
+  } else {
+    logger.info(
+      `[data] No subscription found for Stripe ID: ${stripeSubscriptionId}`,
+    );
+  }
+  return subscription;
 }
 
+/** Finds active subscription for a billing customer (excludes canceled) */
+async function findActiveSubscriptionForCustomer(billingCustomerId: string) {
+  logger.info(
+    `[data] Finding active subscription for customer: ${billingCustomerId}`,
+  );
+  const subscription = await prisma.subscription.findFirst({
+    where: {
+      billingCustomerId,
+      status: { notIn: ["canceled", "incomplete"] },
+    },
+  });
+  if (subscription) {
+    logger.info(
+      `[data] Found active subscription: ${subscription.id} (plan: ${subscription.plan})`,
+    );
+  } else {
+    logger.info(
+      `[data] No active subscription for customer: ${billingCustomerId}`,
+    );
+  }
+  return subscription;
+}
+
+/** Fetches all active subscriptions from Stripe for a customer */
+
+/** Fetches billing period (start/end dates) from Stripe invoice line items */
 async function fetchBillingPeriodFromInvoice(
   invoiceId: string,
 ): Promise<BillingPeriod | null> {
+  logger.info(`[data] Fetching billing period from invoice: ${invoiceId}`);
   const invoice = await stripe.invoices.retrieve(invoiceId);
   const period = invoice.lines.data[0]?.period;
 
-  if (!period) return null;
+  if (!period) {
+    logger.warn(`[data] No billing period found in invoice: ${invoiceId}`);
+    return null;
+  }
 
+  logger.info(
+    `[data] Billing period: ${new Date(period.start * 1000).toISOString()} - ${new Date(period.end * 1000).toISOString()}`,
+  );
   return {
     start: new Date(period.start * 1000),
     end: new Date(period.end * 1000),
@@ -206,6 +275,35 @@ const checkoutSteps = {
         metadata: { appId, externalUserId, billingCustomerId },
       },
     };
+  },
+
+  checkExistingSubscription: async (
+    ctx: PipelineContext<CheckoutPipelineData>,
+  ): Promise<PipelineContext<CheckoutPipelineData>> => {
+    const { session, metadata } = ctx.data;
+    const stripeSubId = session.subscription as string;
+
+    // Check if this exact Stripe subscription already exists locally
+    const existingByStripeId = await findSubscriptionByStripeId(stripeSubId);
+    if (existingByStripeId) {
+      return log(
+        ctx,
+        `[checkout] Subscription ${stripeSubId} already exists locally, will update`,
+      );
+    }
+
+    // Check if customer already has an active subscription (potential duplicate)
+    const existingActive = await findActiveSubscriptionForCustomer(
+      metadata!.billingCustomerId,
+    );
+    if (existingActive) {
+      logger.warn(
+        `[webhook] Customer ${metadata!.billingCustomerId} already has active subscription ${existingActive.stripeSubscriptionId}`,
+      );
+      // Continue anyway - upsert will handle it, but log for visibility
+    }
+
+    return log(ctx, `[checkout] No existing subscription found, proceeding`);
   },
 
   fetchStripeSubscription: async (
@@ -359,6 +457,7 @@ const checkoutSteps = {
   },
 };
 
+/** Handles checkout.session.completed: creates subscription record from checkout session */
 async function handleCheckoutSessionCompleted(
   event: Stripe.Event,
 ): Promise<void> {
@@ -367,6 +466,7 @@ async function handleCheckoutSessionCompleted(
   await runPipeline(createContext(event, { session }), [
     checkoutSteps.validateSession,
     checkoutSteps.extractMetadata,
+    checkoutSteps.checkExistingSubscription,
     checkoutSteps.fetchStripeSubscription,
     checkoutSteps.extractItemData,
     checkoutSteps.resolvePlan,
@@ -376,10 +476,6 @@ async function handleCheckoutSessionCompleted(
     checkoutSteps.logSubscriptionCreated,
   ]);
 }
-
-// =============================================================================
-// SUBSCRIPTION UPDATED PIPELINE
-// =============================================================================
 
 const updateSteps = {
   findExisting: async (
@@ -501,6 +597,7 @@ const updateSteps = {
   },
 };
 
+/** Handles customer.subscription.updated: syncs plan changes and billing period */
 async function handleSubscriptionUpdated(event: Stripe.Event): Promise<void> {
   const subscription = event.data.object as Stripe.Subscription;
 
@@ -514,10 +611,7 @@ async function handleSubscriptionUpdated(event: Stripe.Event): Promise<void> {
   ]);
 }
 
-// =============================================================================
-// SUBSCRIPTION DELETED PIPELINE
-// =============================================================================
-
+/** Pipeline steps for handling subscription deletion/cancellation */
 const deleteSteps = {
   findExisting: async (
     ctx: PipelineContext<DeletePipelineData>,
@@ -585,6 +679,7 @@ const deleteSteps = {
   },
 };
 
+/** Handles customer.subscription.deleted: marks subscription as canceled */
 async function handleSubscriptionDeleted(event: Stripe.Event): Promise<void> {
   const subscription = event.data.object as Stripe.Subscription;
 
@@ -610,13 +705,15 @@ const webhookHandlers: Record<string, WebhookHandler> = {
 // IDEMPOTENCY
 // =============================================================================
 
+/** Checks if event was already processed to prevent duplicate handling */
 async function isEventAlreadyProcessed(eventId: string): Promise<boolean> {
   const existingEvent = await prisma.stripeEvent.findUnique({
     where: { id: eventId },
   });
-  return existingEvent?.processedAt !== null;
+  return Boolean(existingEvent?.processedAt);
 }
 
+/** Records incoming event in StripeEvent table for idempotency tracking */
 async function recordEventReceived(event: Stripe.Event): Promise<void> {
   await prisma.stripeEvent.upsert({
     where: { id: event.id },
@@ -629,6 +726,7 @@ async function recordEventReceived(event: Stripe.Event): Promise<void> {
   });
 }
 
+/** Marks event as processed with timestamp after successful handling */
 async function markEventProcessed(eventId: string): Promise<void> {
   await prisma.stripeEvent.update({
     where: { id: eventId },
@@ -640,6 +738,7 @@ async function markEventProcessed(eventId: string): Promise<void> {
 // ROUTE HANDLER
 // =============================================================================
 
+/** Main webhook endpoint: verifies signature, ensures idempotency, routes to handler */
 export async function POST(req: NextRequest) {
   const body = await req.text();
   const headersList = await headers();

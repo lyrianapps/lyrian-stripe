@@ -7,8 +7,8 @@ const JWT_SECRET = process.env.SAAS_JWT_SECRET || "changeme";
 export async function GET(request: Request) {
   try {
     // Use hardcoded mock values for testing
-    const mockAppId = "mock-app-125";
-    const mockExternalUserId = "mock-user-459";
+    const mockAppId = "mock-app-127";
+    const mockExternalUserId = "mock-user-458";
 
     // Create a JWT
     const token = jwt.sign(
