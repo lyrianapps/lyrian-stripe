@@ -88,8 +88,6 @@ export async function POST(req: NextRequest) {
     // 5. Fetch plan config
     const planConfig = await getPlanConfig(plan);
 
-    console.log(await prisma.planConfig.findMany());
-
     if (!planConfig) {
       return errorResponse("Invalid plan", 400);
     }

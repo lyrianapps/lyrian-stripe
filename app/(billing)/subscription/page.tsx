@@ -25,6 +25,8 @@ export default async function SubscriptionPage() {
     where: { billingCustomerId: session.billingCustomerId },
   });
 
+  console.log("subscription", subscription);
+
   return (
     <div className="max-w-xl mx-auto py-12 px-4">
       <Heading level={1} className="mb-6 flex items-center gap-2">
