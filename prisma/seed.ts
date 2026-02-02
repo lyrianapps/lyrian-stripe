@@ -1,17 +1,18 @@
 import { prisma } from "../lib/prisma";
+import { env } from "../env";
 
 async function main() {
   await prisma.planConfig.createMany({
     data: [
       {
         plan: "free_trial",
-        stripeProductId: process.env.STRIPE_FREE_PRODUCT_ID!,
-        stripePriceId: process.env.STRIPE_FREE_PRICE_ID!,
+        stripeProductId: env.STRIPE_FREE_PRODUCT_ID,
+        stripePriceId: env.STRIPE_FREE_PRICE_ID,
       },
       {
         plan: "basic",
-        stripeProductId: process.env.STRIPE_BASIC_PRODUCT_ID!,
-        stripePriceId: process.env.STRIPE_BASIC_PRICE_ID!,
+        stripeProductId: env.STRIPE_BASIC_PRODUCT_ID,
+        stripePriceId: env.STRIPE_BASIC_PRICE_ID,
       },
     ],
     skipDuplicates: true,

@@ -25,7 +25,10 @@ export default async function SubscriptionPage() {
     where: { billingCustomerId: session.billingCustomerId },
   });
 
-  console.log("subscription", subscription);
+  const trialData = {
+    currentPeriodStart: subscription?.currentPeriodStart,
+    currentPeriodEnd: subscription?.currentPeriodEnd,
+  };
 
   return (
     <div className="max-w-xl mx-auto py-12 px-4">
@@ -41,6 +44,7 @@ export default async function SubscriptionPage() {
         currentPlan={subscription?.plan ?? "free_trial"}
         appId={session.appId}
         externalUserId={session.externalUserId}
+        {...trialData}
       />
     </div>
   );

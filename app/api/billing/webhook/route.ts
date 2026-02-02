@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { Plan, SubscriptionStatus } from "@/lib/generated/prisma/enums";
 import { logger, logError } from "@/app/middleware/logger";
+import { env } from "@/env";
 import {
   PipelineContext,
   PipelineStep,
@@ -16,7 +17,7 @@ import {
   WebhookHandler,
 } from "./types";
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
 
 const PLAN_HIERARCHY: readonly Plan[] = ["free_trial", "basic", "pro"] as const;
 

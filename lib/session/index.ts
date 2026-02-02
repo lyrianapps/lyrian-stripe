@@ -7,8 +7,9 @@ import {
   JWTPayloadSchema,
 } from "./schemas";
 import { logError } from "@/app/middleware/logger";
+import { env } from "@/env";
 
-const JWT_SECRET = process.env.SAAS_JWT_SECRET || "changeme";
+const JWT_SECRET = env.SAAS_JWT_SECRET;
 
 export async function createSession(payload: {
   appId: string;

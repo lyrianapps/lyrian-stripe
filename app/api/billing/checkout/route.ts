@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { CheckoutRequestSchema } from "@/lib/session/schemas";
 import { Plan } from "../../../../lib/generated/prisma/enums";
+import { env } from "@/env";
 
 async function upsertApp(appId: string) {
   return prisma.app.upsert({
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Create Stripe Checkout Session
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appUrl = env.NEXT_PUBLIC_APP_URL;
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
