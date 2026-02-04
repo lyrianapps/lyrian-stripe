@@ -6,10 +6,15 @@ import { env } from "@/env";
 const JWT_SECRET = env.SAAS_JWT_SECRET;
 
 export async function GET(request: Request) {
+  // Disable in production
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   try {
     // Use hardcoded mock values for testing
-    const mockAppId = "mock-app-127";
-    const mockExternalUserId = "mock-user-458";
+    const mockAppId = "mock-app-128";
+    const mockExternalUserId = "mock-user-459";
 
     // Create a JWT
     const token = jwt.sign(

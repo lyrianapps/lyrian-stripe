@@ -10,6 +10,9 @@ const envSchema = z.object({
   // App URL
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
 
+  // Cron Jobs (Cloud Scheduler)
+  CRON_SECRET: z.string().min(16).optional(),
+
   // Stripe Keys
   STRIPE_PK_KEY: z.string().startsWith("pk_"),
   STRIPE_SECRET_KEY: z

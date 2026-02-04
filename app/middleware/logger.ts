@@ -21,3 +21,14 @@ export function logError(error: unknown, context?: string) {
     logger.error(`${context ? `[${context}] ` : ""}${String(error)}`);
   }
 }
+
+/**
+ * Extract error message from unknown error type
+ * Useful for logging or displaying errors safely
+ */
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}

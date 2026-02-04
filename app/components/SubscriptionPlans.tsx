@@ -32,7 +32,10 @@ export default function SubscriptionPlans({
     try {
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include", // Include billing_session cookie
         body: JSON.stringify({ appId, externalUserId, plan: "basic" }),
       });
       const data = await res.json();

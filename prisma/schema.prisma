@@ -35,8 +35,9 @@ enum SubscriptionEventType {
 }
 
 model App {
-  id   String @id
-  name String
+  id     String  @id
+  name   String
+  apiKey String? @unique
 
   customers BillingCustomer[]
 }
