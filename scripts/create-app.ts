@@ -8,6 +8,7 @@
  *   npx tsx scripts/create-app.ts saas-todo-app "My Todo App"
  */
 
+import "dotenv/config"; // Load .env before anything else
 import { prisma } from "../lib/prisma";
 import { generateApiKey } from "../lib/auth/apiKey";
 
