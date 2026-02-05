@@ -39,8 +39,8 @@ async function validateSession(
  * Wrap a route handler with flexible authentication
  *
  * Accepts either:
- * - x-api-key header (for external SaaS apps)
- * - billing_session cookie (for billing app's own UI)
+ * - x-api-key header (for external SaaS backend server-to-server calls)
+ * - billing_session cookie (for external SaaS users browsing the billing portal)
  *
  * Usage:
  * ```ts
@@ -52,7 +52,7 @@ async function validateSession(
  */
 export function withApiKey(handler: ProtectedRouteHandler) {
   return async (req: NextRequest): Promise<NextResponse> => {
-    // Try API key first (for external SaaS apps)
+    // Try API key first (for external SaaS backend server-to-server calls)
     const apiKeyResult = await validateApiKey(req);
     if (apiKeyResult.valid) {
       try {
@@ -66,10 +66,8 @@ export function withApiKey(handler: ProtectedRouteHandler) {
       }
     }
 
-    // Fall back to session cookie (for internal UI)
+    // Fall back to session cookie (for external SaaS users browsing the billing portal)
     const sessionResult = await validateSession(req);
-
-    console.log("session denver", sessionResult);
     if (sessionResult.valid) {
       try {
         return await handler(req, { appId: sessionResult.appId });
