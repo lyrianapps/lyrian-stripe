@@ -9,7 +9,11 @@ import SubscriptionPlans from "@/app/components/SubscriptionPlans";
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 
-export default async function SubscriptionPage() {
+export default async function SubscriptionPage({
+  searchParams,
+}: {
+  searchParams?: { [key: string]: string | string[] | undefined };
+}) {
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get("billing_session")?.value;
 
@@ -31,6 +35,12 @@ export default async function SubscriptionPage() {
     cancelAtPeriodEnd: subscription?.cancelAtPeriodEnd,
   };
 
+  // read optional returnUrl from query string (populated by /api/billing/portal)
+  const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
+  const returnUrl = Array.isArray(resolvedSearchParams.returnUrl)
+    ? resolvedSearchParams.returnUrl[0]
+    : (resolvedSearchParams.returnUrl as string | undefined);
+
   return (
     <div className="max-w-xl mx-auto py-12 px-4">
       <Heading level={1} className="mb-6 flex items-center gap-2">
@@ -46,6 +56,7 @@ export default async function SubscriptionPage() {
         appId={session.appId}
         externalUserId={session.externalUserId}
         {...subscriptionData}
+        returnUrl={returnUrl}
       />
     </div>
   );

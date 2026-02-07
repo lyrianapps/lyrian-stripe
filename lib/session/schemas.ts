@@ -37,4 +37,7 @@ export const CheckoutRequestSchema = z.object({
   externalUserId: z.string().min(1),
   plan: z.enum(["free_trial", "basic", "pro"]),
   email: z.string().email().optional(),
+  // Optional return URL for redirecting back to the calling SaaS app
+  // Accept only valid http(s) URLs; server should still validate origin/whitelist.
+  returnUrl: z.string().url().optional(),
 });

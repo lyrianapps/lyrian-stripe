@@ -23,6 +23,7 @@ export default function SubscriptionPlans({
   currentPeriodStart,
   currentPeriodEnd,
   cancelAtPeriodEnd,
+  returnUrl,
 }: SubscriptionPlansProps) {
   const [loading, setLoading] = useState(false);
   const [canceling, setCanceling] = useState(false);
@@ -38,7 +39,12 @@ export default function SubscriptionPlans({
           "Content-Type": "application/json",
         },
         credentials: "include", // Include billing_session cookie
-        body: JSON.stringify({ appId, externalUserId, plan: "basic" }),
+        body: JSON.stringify({
+          appId,
+          externalUserId,
+          plan: "basic",
+          returnUrl,
+        }),
       });
       const data = await res.json();
       if (res.ok && data.url) {

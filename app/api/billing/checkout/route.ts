@@ -72,7 +72,7 @@ export const POST = withApiKey(async (req: NextRequest) => {
     return errorResponse("Invalid request body", 400, parsed.error.flatten());
   }
 
-  const { appId, externalUserId, plan, email } = parsed.data;
+  const { appId, externalUserId, plan, email, returnUrl } = parsed.data;
 
   await upsertApp(appId);
 
@@ -92,6 +92,38 @@ export const POST = withApiKey(async (req: NextRequest) => {
 
   // 6. Create Stripe Checkout Session
   const appUrl = env.NEXT_PUBLIC_APP_URL;
+
+  console.log("return url miami", returnUrl);
+
+  // Validate optional returnUrl to avoid open redirect vulnerabilities.
+  let validatedReturnUrl: string | undefined;
+  if (returnUrl) {
+    try {
+      const u = new URL(returnUrl);
+      if (!["http:", "https:"].includes(u.protocol)) {
+        return errorResponse("Invalid returnUrl protocol", 400);
+      }
+      // Basic origin check (recommended: replace with per-app whitelist)
+      if (!u.origin) return errorResponse("Invalid returnUrl", 400);
+      validatedReturnUrl = returnUrl;
+    } catch {
+      return errorResponse("Invalid returnUrl", 400);
+    }
+  }
+
+  console.log("validated returl url", validatedReturnUrl);
+
+  const successBase = `${appUrl}/subscription/success`;
+  const cancelBase = `${appUrl}/subscription`;
+
+  const successUrl = validatedReturnUrl
+    ? `${successBase}?returnUrl=${encodeURIComponent(validatedReturnUrl)}&appId=${encodeURIComponent(appId)}`
+    : successBase;
+
+  const cancelUrl = validatedReturnUrl
+    ? `${cancelBase}?returnUrl=${encodeURIComponent(validatedReturnUrl)}&appId=${encodeURIComponent(appId)}`
+    : cancelBase;
+
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     payment_method_types: ["card"],
@@ -102,8 +134,8 @@ export const POST = withApiKey(async (req: NextRequest) => {
         quantity: 1,
       },
     ],
-    success_url: `${appUrl}/subscription/success`,
-    cancel_url: `${appUrl}/subscription`,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
     metadata: {
       appId,
       externalUserId,

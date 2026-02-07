@@ -8,4 +8,6 @@ export type SubscriptionPlansProps = {
   currentPeriodStart?: Date | string | null;
   currentPeriodEnd?: Date | string | null;
   cancelAtPeriodEnd?: boolean;
+  // Optional return URL provided by the SaaS app via the portal JWT
+  returnUrl?: string;
 };

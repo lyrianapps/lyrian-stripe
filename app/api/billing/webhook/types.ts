@@ -63,10 +63,6 @@ export interface UpdatePipelineData {
   period?: BillingPeriod | null;
 }
 
-// =============================================================================
-// DELETE PIPELINE TYPES
-// =============================================================================
-
 export interface DeletePipelineData {
   subscription: Stripe.Subscription;
   existingSubscription?: {
@@ -75,9 +71,5 @@ export interface DeletePipelineData {
   } | null;
   accessEndsAt?: Date | null;
 }
-
-// =============================================================================
-// WEBHOOK HANDLER TYPE
-// =============================================================================
 
 export type WebhookHandler = (event: Stripe.Event) => Promise<void>;

@@ -17,9 +17,24 @@ export async function GET(req: NextRequest) {
       externalUserId: payload.sub as string,
     });
 
-    // Build absolute URL for redirect
+    // Build absolute URL for redirect and include optional returnUrl from the token
     const origin = req.nextUrl.origin;
-    const response = NextResponse.redirect(`${origin}/subscription`);
+    let redirectTo = `${origin}/subscription`;
+    try {
+      const returnUrl = payload.returnUrl as string | undefined;
+      if (returnUrl) {
+        const u = new URL(returnUrl);
+        if (["http:", "https:"].includes(u.protocol) && u.origin) {
+          redirectTo = `${redirectTo}?returnUrl=${encodeURIComponent(returnUrl)}&appId=${encodeURIComponent(
+            payload.iss as string,
+          )}`;
+        }
+      }
+    } catch (e) {
+      // ignore malformed returnUrl and proceed without it
+    }
+
+    const response = NextResponse.redirect(redirectTo);
     response.cookies.set("billing_session", sessionToken, {
       httpOnly: true,
       secure: true,
