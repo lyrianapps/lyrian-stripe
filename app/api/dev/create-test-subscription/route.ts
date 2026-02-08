@@ -25,13 +25,20 @@ export async function POST(req: NextRequest) {
 
   const parsed = DevCreateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid request", details: parsed.error.flatten() },
+      { status: 400 },
+    );
   }
 
   const { appId, externalUserId, minutes = 30 } = parsed.data;
 
   try {
-    await prisma.app.upsert({ where: { id: appId }, update: {}, create: { id: appId, name: appId } });
+    await prisma.app.upsert({
+      where: { id: appId },
+      update: {},
+      create: { id: appId, name: appId },
+    });
 
     let customer = await prisma.billingCustomer.findUnique({
       where: { appId_externalUserId: { appId, externalUserId } },
@@ -74,6 +81,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     logError(err, "dev/create-test-subscription");
-    return NextResponse.json({ error: "Failed to create test subscription" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to create test subscription" },
+      { status: 500 },
+    );
   }
 }

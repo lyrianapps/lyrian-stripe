@@ -28,6 +28,8 @@ const envSchema = z.object({
   // Stripe Product IDs
   STRIPE_FREE_PRODUCT_ID: z.string().startsWith("prod_"),
   STRIPE_BASIC_PRODUCT_ID: z.string().startsWith("prod_"),
+  // Dev admin token for gating dev-only routes (set in non-production only)
+  DEV_ADMIN_TOKEN: z.string().min(8).optional(),
 });
 
 function validateEnv() {
