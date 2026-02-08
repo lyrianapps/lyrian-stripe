@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       secure: true,
       sameSite: "lax",
       path: "/",
-      maxAge: 15 * 60,
+      maxAge: 60 * 60, // 1 hour
     });
 
     return response;
