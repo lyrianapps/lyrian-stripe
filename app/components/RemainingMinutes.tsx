@@ -10,8 +10,8 @@ interface RemainingMinutesProps {
 
 function formatMinutes(minutes: number) {
   if (minutes < 1) return "Test account expired and downgraded.";
-  if (minutes === 1) return "1 minute";
-  return `${minutes} minutes`;
+  if (minutes === 1) return "1 minute remaining in this period";
+  return `${minutes} minutes remaining in this period`;
 }
 
 function computeMinutes(end?: string | Date | null) {
@@ -49,5 +49,5 @@ export function RemainingMinutes({
 
   if (minutes === null) return null;
 
-  return <span>{formatMinutes(minutes)} remaining in this period</span>;
+  return <span>{formatMinutes(minutes)}</span>;
 }
