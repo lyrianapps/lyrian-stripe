@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { prisma } from "../lib/prisma";
 import { randomBytes } from "crypto";
 
@@ -7,30 +8,48 @@ async function main() {
   const minutesArg = process.argv[4];
   const minutes = minutesArg ? parseInt(minutesArg, 10) : 30;
 
-  if (!appId || !externalUserId) {
+  const trimmedAppId = appId?.toString().trim();
+  const trimmedExternalUserId = externalUserId?.toString().trim();
+
+  if (!trimmedAppId || !trimmedExternalUserId) {
     console.error(
-      "Usage: npx tsx scripts/create-test-subscription.ts <appId> <externalUserId> [minutes]",
+      "Usage: npm run create-test-subscription -- <appId> <externalUserId> [minutes]",
+    );
+    console.error(
+      "Example: npm run create-test-subscription -- myApp user123 30",
+    );
+    process.exit(1);
+  }
+
+  if (trimmedExternalUserId.includes(" ")) {
+    console.error(
+      "externalUserId must not contain spaces. Quote the argument if necessary.",
     );
     process.exit(1);
   }
 
   // Upsert app
   await prisma.app.upsert({
-    where: { id: appId },
+    where: { id: trimmedAppId },
     update: {},
-    create: { id: appId, name: appId },
+    create: { id: trimmedAppId, name: trimmedAppId },
   });
 
   // Find or create billing customer
   let customer = await prisma.billingCustomer.findUnique({
-    where: { appId_externalUserId: { appId, externalUserId } },
+    where: {
+      appId_externalUserId: {
+        appId: trimmedAppId,
+        externalUserId: trimmedExternalUserId,
+      },
+    },
   });
 
   if (!customer) {
     customer = await prisma.billingCustomer.create({
       data: {
-        appId,
-        externalUserId,
+        appId: trimmedAppId,
+        externalUserId: trimmedExternalUserId,
         stripeCustomerId: "placeholder_" + randomBytes(6).toString("hex"),
       },
     });
@@ -46,9 +65,9 @@ async function main() {
     data: {
       billingCustomer: { connect: { id: customer.id } },
       stripeSubscriptionId: `test_sub_${randomBytes(8).toString("hex")}`,
-      stripePriceId: "test_price",
-      stripeProductId: "test_product",
-      plan: "free_trial",
+      stripePriceId: "basic_price",
+      stripeProductId: "basic_product",
+      plan: "basic",
       status: "active",
       currentPeriodStart: now,
       currentPeriodEnd: end,

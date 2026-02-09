@@ -243,6 +243,45 @@ npx prisma db seed
 yarn run dev
 ```
 
+## Scripts
+
+### Create Test Subscription
+
+Create a test subscription for local development:
+
+```bash
+npm run create-test-subscription -- <appId> <externalUserId> [minutes]
+
+# Example: 30-minute test subscription
+npm run create-test-subscription -- myApp user123 30
+```
+
+### Cron: Downgrade Expired Subscriptions
+
+Downgrade expired subscriptions to `free_trial`. Uses Stripe as source of truth.
+
+```bash
+# Expired only (default) - checks subscriptions past currentPeriodEnd
+curl -X POST http://localhost:3000/api/cron/downgrade-expired \
+  -H "x-cron-secret: YOUR_CRON_SECRET"
+
+# Full sync - checks ALL active subscriptions against Stripe
+# Use to catch deleted/canceled subscriptions
+curl -X POST "http://localhost:3000/api/cron/downgrade-expired?mode=full" \
+  -H "x-cron-secret: YOUR_CRON_SECRET"
+```
+
+**GCP Cloud Scheduler:**
+
+```bash
+gcloud scheduler jobs create http downgrade-expired \
+  --location=us-central1 \
+  --schedule="*/15 * * * *" \
+  --uri="https://your-app.com/api/cron/downgrade-expired" \
+  --http-method=POST \
+  --headers="x-cron-secret=YOUR_CRON_SECRET"
+```
+
 ## Deployment
 
 This app is designed to run on Google Cloud Run with Cloud Scheduler for cron jobs.

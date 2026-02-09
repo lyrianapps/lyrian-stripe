@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "create-test-subscription": "tsx scripts/create-test-subscription.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

@@ -1,25 +1,22 @@
-"use client";
-
-import { useEffect } from "react";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Heading } from "@/app/components/Heading";
 import { Paragraph } from "@/app/components/Paragraph";
 
-export default function SubscriptionSuccessPage() {
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const returnUrl = params.get("returnUrl");
-      if (returnUrl) {
-        // Optionally: poll a server endpoint to confirm subscription status
-        // before redirecting. For now, redirect immediately so SaaS app
-        // receives the user back.
-        window.location.href = returnUrl;
-      }
-    } catch (e) {
-      // ignore malformed URL and stay on page
-    }
-  }, []);
+export default async function SubscriptionSuccessPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const params = await searchParams;
+  const returnUrl = Array.isArray(params?.returnUrl)
+    ? params.returnUrl[0]
+    : params?.returnUrl;
+
+  // Redirect server-side if returnUrl is provided
+  if (returnUrl) {
+    redirect(returnUrl);
+  }
 
   return (
     <div className="max-w-xl mx-auto py-24 px-4 text-center">

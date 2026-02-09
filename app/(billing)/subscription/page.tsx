@@ -5,6 +5,7 @@ import { CreditCard } from "lucide-react";
 import { Heading } from "@/app/components/Heading";
 import { Paragraph } from "@/app/components/Paragraph";
 import SubscriptionPlans from "@/app/components/SubscriptionPlans";
+import { RemainingMinutesClient } from "@/app/components/RemainingMinutesClient";
 
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
@@ -41,6 +42,17 @@ export default async function SubscriptionPage({
     ? resolvedSearchParams.returnUrl[0]
     : (resolvedSearchParams.returnUrl as string | undefined);
 
+  const isDevApp = Boolean(
+    session?.appId && String(session.appId).startsWith("dev"),
+  );
+  const isDevTest = Boolean(
+    subscription?.stripeSubscriptionId?.startsWith("dev_test_") ||
+    subscription?.stripeProductId === "dev_test_product" ||
+    subscription?.stripePriceId === "dev_test_price",
+  );
+
+  const isTest = isDevApp || isDevTest;
+
   return (
     <div className="max-w-xl mx-auto py-12 px-4">
       <Heading level={1} className="mb-6 flex items-center gap-2">
@@ -50,6 +62,19 @@ export default async function SubscriptionPage({
       <Paragraph>
         Manage your subscription plan. Upgrade, downgrade, or cancel anytime.
       </Paragraph>
+
+      {isTest && (
+        <div className="mb-6 rounded-md bg-sky-50 border border-sky-200 p-3 text-sky-800">
+          <div className="font-semibold">Test account</div>
+          <div className="text-sm">
+            <RemainingMinutesClient
+              start={subscription?.currentPeriodStart}
+              end={subscription?.currentPeriodEnd}
+              billingCustomerId={subscription?.billingCustomerId}
+            />
+          </div>
+        </div>
+      )}
 
       <SubscriptionPlans
         currentPlan={subscription?.plan ?? "free_trial"}
