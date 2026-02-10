@@ -6,6 +6,7 @@ import { Heading } from "@/app/components/Heading";
 import { Paragraph } from "@/app/components/Paragraph";
 import SubscriptionPlans from "@/app/components/SubscriptionPlans";
 import { RemainingMinutesClient } from "@/app/components/RemainingMinutesClient";
+import { ManageBillingButton } from "@/app/components/ManageBillingButton";
 
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
@@ -62,6 +63,9 @@ export default async function SubscriptionPage({
       <Paragraph>
         Manage your subscription plan. Upgrade, downgrade, or cancel anytime.
       </Paragraph>
+
+      {/* Show Manage Billing button for users with a Stripe customer */}
+      <ManageBillingButton returnUrl={returnUrl} className="mb-6" />
 
       {isTest && (
         <div className="mb-6 rounded-md bg-sky-50 border border-sky-200 p-3 text-sky-800">

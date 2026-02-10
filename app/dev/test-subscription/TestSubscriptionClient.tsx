@@ -3,8 +3,8 @@
 import { useState } from "react";
 
 export default function TestSubscriptionClient() {
-  const [appId, setAppId] = useState("dev_basic_user126");
-  const [externalUserId, setExternalUserId] = useState("dev_basic_126");
+  const [appId, setAppId] = useState("dev_app_basic12");
+  const [externalUserId, setExternalUserId] = useState("dev_basic_user12");
   const [minutes, setMinutes] = useState(30);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);

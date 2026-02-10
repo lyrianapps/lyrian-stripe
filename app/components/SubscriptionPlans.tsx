@@ -30,6 +30,7 @@ export default function SubscriptionPlans({
   const [isCanceled, setIsCanceled] = useState(cancelAtPeriodEnd ?? false);
 
   // Handles upgrade to Basic plan
+
   const handleUpgradeToBasic = async () => {
     setLoading(true);
     try {
