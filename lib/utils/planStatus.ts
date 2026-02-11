@@ -37,3 +37,11 @@ export function formatPeriodStatus(
     ? formatter(currentPeriodStart, currentPeriodEnd)
     : "Unknown";
 }
+
+/** Formats the expiration date for display */
+export function formatExpirationDate(
+  date: Date | string | null | undefined,
+): string {
+  if (!date) return "the end of your billing period";
+  return moment(date).format("MMMM D, YYYY");
+}

@@ -4,17 +4,13 @@ import { Paragraph } from "@/app/components/Paragraph";
 import { Button } from "@/app/components/Button";
 import { PlanCard } from "@/app/components/PlanCard";
 import { XCircle } from "lucide-react";
-import { formatPeriodStatus } from "@/lib/utils/planStatus";
+import {
+  formatPeriodStatus,
+  formatExpirationDate,
+} from "@/lib/utils/planStatus";
 import { SubscriptionPlansProps } from "@/lib/utils/types";
-import moment from "moment";
 
 import { useState } from "react";
-
-/** Formats the expiration date for display */
-function formatExpirationDate(date: Date | string | null | undefined): string {
-  if (!date) return "the end of your billing period";
-  return moment(date).format("MMMM D, YYYY");
-}
 
 export default function SubscriptionPlans({
   currentPlan,
@@ -39,7 +35,7 @@ export default function SubscriptionPlans({
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: "include", // Include billing_session cookie
+        credentials: "include",
         body: JSON.stringify({
           appId,
           externalUserId,
