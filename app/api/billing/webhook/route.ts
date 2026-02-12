@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { Plan, SubscriptionStatus } from "@/lib/generated/prisma/enums";
 import { logger, logError } from "@/app/middleware/logger";
 import { env } from "@/env";
+import { checkRateLimit } from "@/lib/middleware/rateLimit";
 import {
   PipelineContext,
   PipelineStep,
@@ -741,6 +742,19 @@ async function markEventProcessed(eventId: string): Promise<void> {
 
 /** Main webhook endpoint: verifies signature, ensures idempotency, routes to handler */
 export async function POST(req: NextRequest) {
+  // Rate limit check: 100 requests per minute (generous for Stripe retries)
+  const rateLimitResult = await checkRateLimit(req, "webhook");
+  if (!rateLimitResult.allowed) {
+    logger.warn("[webhook] Rate limited");
+    return NextResponse.json(
+      { error: "Too many requests", retryAfter: rateLimitResult.retryAfter },
+      {
+        status: 429,
+        headers: rateLimitResult.headers,
+      },
+    );
+  }
+
   const body = await req.text();
   const headersList = await headers();
   const signature = headersList.get("stripe-signature");

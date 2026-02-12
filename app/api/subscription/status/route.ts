@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withApiKey } from "@/lib/auth/apiKey";
+import { withRateLimit } from "@/lib/middleware/rateLimit";
 
 /**
  * Get subscription status for a user
@@ -13,7 +14,7 @@ import { withApiKey } from "@/lib/auth/apiKey";
  * - Expired: { plan: "free_trial", status: "expired", expiredAt: "...", previousPlan: "pro" }
  * - None:    { plan: null, status: null }
  */
-export const GET = withApiKey(async (request: NextRequest) => {
+const statusHandler = withApiKey(async (request: NextRequest) => {
   const appId = request.nextUrl.searchParams.get("appId");
   const externalUserId = request.nextUrl.searchParams.get("externalUserId");
 
@@ -64,3 +65,6 @@ export const GET = withApiKey(async (request: NextRequest) => {
     status: subscription.status,
   });
 });
+
+// Rate limited: 60 requests per minute (for polling)
+export const GET = withRateLimit("status", statusHandler);

@@ -6,6 +6,7 @@ import { logError } from "@/app/middleware/logger";
 import { env } from "@/env";
 import { getKnownErrorResponse } from "@/lib/utils/errorHandlers";
 import { z } from "zod";
+import { withRateLimit } from "@/lib/middleware/rateLimit";
 
 const CancelRequestSchema = z.object({
   appId: z.string().min(1),
@@ -59,7 +60,7 @@ async function cancelStripeSubscription(
  * By default, cancels at period end (user keeps access until billing period ends)
  * Set cancelImmediately: true to cancel right away
  */
-export const POST = withApiKey(async (req: NextRequest) => {
+const cancelHandler = withApiKey(async (req: NextRequest) => {
   let body: unknown;
 
   try {
@@ -172,3 +173,6 @@ export const POST = withApiKey(async (req: NextRequest) => {
     );
   }
 });
+
+// Rate limited: 5 requests per minute
+export const POST = withRateLimit("cancel", cancelHandler);

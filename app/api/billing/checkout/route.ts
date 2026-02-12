@@ -5,6 +5,7 @@ import { CheckoutRequestSchema } from "@/lib/session/schemas";
 import { Plan } from "../../../../lib/generated/prisma/enums";
 import { env } from "@/env";
 import { withApiKey } from "@/lib/auth/apiKey";
+import { withRateLimit } from "@/lib/middleware/rateLimit";
 
 async function upsertApp(appId: string) {
   return prisma.app.upsert({
@@ -58,7 +59,7 @@ function errorResponse(message: string, status = 500, details?: unknown) {
   return NextResponse.json(payload, { status });
 }
 
-export const POST = withApiKey(async (req: NextRequest) => {
+const checkoutHandler = withApiKey(async (req: NextRequest) => {
   let body: unknown;
 
   try {
@@ -149,3 +150,6 @@ export const POST = withApiKey(async (req: NextRequest) => {
 
   return NextResponse.json({ url: session.url });
 });
+
+// Rate limited: 10 requests per minute
+export const POST = withRateLimit("checkout", checkoutHandler);
