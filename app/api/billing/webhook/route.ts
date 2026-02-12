@@ -15,6 +15,7 @@ import {
   CheckoutPipelineData,
   UpdatePipelineData,
   DeletePipelineData,
+  InvoicePipelineData,
   WebhookHandler,
 } from "./types";
 
@@ -158,6 +159,20 @@ function extractCancellationDate(
   }
   if (subscription.ended_at) {
     return new Date(subscription.ended_at * 1000);
+  }
+  return null;
+}
+
+/** Extracts subscription ID from invoice (handles new parent.subscription_details structure) */
+function extractSubscriptionIdFromInvoice(
+  invoice: Stripe.Invoice,
+): string | null {
+  // New Stripe API structure: subscription is under parent.subscription_details
+  const subDetails = invoice.parent?.subscription_details;
+  if (subDetails?.subscription) {
+    return typeof subDetails.subscription === "string"
+      ? subDetails.subscription
+      : subDetails.subscription.id;
   }
   return null;
 }
@@ -694,6 +709,376 @@ async function handleSubscriptionDeleted(event: Stripe.Event): Promise<void> {
 }
 
 // =============================================================================
+// INVOICE PAYMENT FAILED PIPELINE
+// =============================================================================
+
+/** Pipeline steps for handling failed invoice payments */
+const invoiceFailedSteps = {
+  extractCustomerId: async (
+    ctx: PipelineContext<InvoicePipelineData>,
+  ): Promise<PipelineContext<InvoicePipelineData>> => {
+    const { invoice } = ctx.data;
+
+    const customerId =
+      typeof invoice.customer === "string"
+        ? invoice.customer
+        : invoice.customer?.id;
+
+    if (!customerId) {
+      return halt(ctx, "No customer ID in invoice");
+    }
+
+    return log(ctx, `[invoice] Customer ID: ${customerId}`);
+  },
+
+  findBillingCustomer: async (
+    ctx: PipelineContext<InvoicePipelineData>,
+  ): Promise<PipelineContext<InvoicePipelineData>> => {
+    const { invoice } = ctx.data;
+
+    const customerId =
+      typeof invoice.customer === "string"
+        ? invoice.customer
+        : invoice.customer?.id;
+
+    const billingCustomer = await prisma.billingCustomer.findUnique({
+      where: { stripeCustomerId: customerId! },
+      select: {
+        id: true,
+        email: true,
+        appId: true,
+        externalUserId: true,
+      },
+    });
+
+    if (!billingCustomer) {
+      return halt(
+        ctx,
+        `No billing customer found for Stripe customer ${customerId}`,
+      );
+    }
+
+    return {
+      ...ctx,
+      data: { ...ctx.data, billingCustomer },
+    };
+  },
+
+  findSubscription: async (
+    ctx: PipelineContext<InvoicePipelineData>,
+  ): Promise<PipelineContext<InvoicePipelineData>> => {
+    const { invoice } = ctx.data;
+
+    const stripeSubId = extractSubscriptionIdFromInvoice(invoice);
+
+    if (!stripeSubId) {
+      // One-time payment, no subscription
+      return log(ctx, "[invoice] No subscription linked to invoice");
+    }
+
+    const subscription = await prisma.subscription.findUnique({
+      where: { stripeSubscriptionId: stripeSubId },
+      select: { id: true, plan: true },
+    });
+
+    return {
+      ...ctx,
+      data: { ...ctx.data, subscription },
+    };
+  },
+
+  extractFailureInfo: async (
+    ctx: PipelineContext<InvoicePipelineData>,
+  ): Promise<PipelineContext<InvoicePipelineData>> => {
+    const { invoice } = ctx.data;
+
+    // Get failure details from the payment intent or charge
+    let failureCode: string | null = null;
+    let failureMessage: string | null = null;
+
+    if (invoice.last_finalization_error) {
+      failureCode = invoice.last_finalization_error.code ?? null;
+      failureMessage = invoice.last_finalization_error.message ?? null;
+    }
+
+    // Attempt count from invoice
+    const attemptCount = invoice.attempt_count ?? 1;
+
+    // Next retry from Stripe's dunning settings
+    const nextRetryAt = invoice.next_payment_attempt
+      ? new Date(invoice.next_payment_attempt * 1000)
+      : null;
+
+    return {
+      ...ctx,
+      data: {
+        ...ctx.data,
+        failureInfo: {
+          code: failureCode,
+          message: failureMessage,
+          attemptCount,
+          nextRetryAt,
+        },
+      },
+    };
+  },
+
+  persistPaymentEvent: async (
+    ctx: PipelineContext<InvoicePipelineData>,
+  ): Promise<PipelineContext<InvoicePipelineData>> => {
+    const { invoice, billingCustomer, failureInfo } = ctx.data;
+
+    const stripeSubId = extractSubscriptionIdFromInvoice(invoice);
+
+    await prisma.paymentEvent.create({
+      data: {
+        billingCustomerId: billingCustomer!.id,
+        stripeInvoiceId: invoice.id,
+        stripeSubscriptionId: stripeSubId ?? null,
+        type: "payment_failed",
+        amount: invoice.amount_due,
+        currency: invoice.currency,
+        failureCode: failureInfo?.code,
+        failureMessage: failureInfo?.message,
+        attemptCount: failureInfo?.attemptCount ?? 1,
+        nextRetryAt: failureInfo?.nextRetryAt,
+      },
+    });
+
+    return log(
+      ctx,
+      `[invoice] Recorded payment failure for invoice ${invoice.id} (attempt ${failureInfo?.attemptCount})`,
+    );
+  },
+
+  updateSubscriptionStatus: async (
+    ctx: PipelineContext<InvoicePipelineData>,
+  ): Promise<PipelineContext<InvoicePipelineData>> => {
+    const { subscription } = ctx.data;
+
+    if (!subscription) {
+      return ctx;
+    }
+
+    // Update subscription to past_due status
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: { status: "past_due" },
+    });
+
+    // Log the event
+    await prisma.subscriptionEvent.create({
+      data: {
+        subscriptionId: subscription.id,
+        type: "payment_failed",
+        fromPlan: subscription.plan,
+        toPlan: subscription.plan,
+      },
+    });
+
+    return log(
+      ctx,
+      `[invoice] Updated subscription ${subscription.id} to past_due`,
+    );
+  },
+
+  logForNotification: async (
+    ctx: PipelineContext<InvoicePipelineData>,
+  ): Promise<PipelineContext<InvoicePipelineData>> => {
+    const { invoice, billingCustomer, failureInfo } = ctx.data;
+
+    // Log details that could be used for notifications
+    // In a real system, you'd send an email or webhook here
+    logger.warn(`[invoice] PAYMENT FAILED - Action required`, {
+      customerId: billingCustomer?.id,
+      email: billingCustomer?.email,
+      appId: billingCustomer?.appId,
+      externalUserId: billingCustomer?.externalUserId,
+      invoiceId: invoice.id,
+      amount: invoice.amount_due,
+      currency: invoice.currency,
+      attemptCount: failureInfo?.attemptCount,
+      nextRetryAt: failureInfo?.nextRetryAt?.toISOString(),
+      failureCode: failureInfo?.code,
+      failureMessage: failureInfo?.message,
+    });
+
+    return log(
+      ctx,
+      `[invoice] Payment failed notification logged for ${billingCustomer?.email}`,
+    );
+  },
+};
+
+/** Handles invoice.payment_failed: records failure and updates subscription status */
+async function handleInvoicePaymentFailed(event: Stripe.Event): Promise<void> {
+  const invoice = event.data.object as Stripe.Invoice;
+
+  await runPipeline(createContext(event, { invoice }), [
+    invoiceFailedSteps.extractCustomerId,
+    invoiceFailedSteps.findBillingCustomer,
+    invoiceFailedSteps.findSubscription,
+    invoiceFailedSteps.extractFailureInfo,
+    invoiceFailedSteps.persistPaymentEvent,
+    invoiceFailedSteps.updateSubscriptionStatus,
+    invoiceFailedSteps.logForNotification,
+  ]);
+}
+
+// =============================================================================
+// INVOICE PAYMENT SUCCEEDED PIPELINE
+// =============================================================================
+
+/** Pipeline steps for handling successful invoice payments */
+const invoiceSucceededSteps = {
+  findBillingCustomer: async (
+    ctx: PipelineContext<InvoicePipelineData>,
+  ): Promise<PipelineContext<InvoicePipelineData>> => {
+    const { invoice } = ctx.data;
+
+    const customerId =
+      typeof invoice.customer === "string"
+        ? invoice.customer
+        : invoice.customer?.id;
+
+    if (!customerId) {
+      return halt(ctx, "No customer ID in invoice");
+    }
+
+    const billingCustomer = await prisma.billingCustomer.findUnique({
+      where: { stripeCustomerId: customerId },
+      select: {
+        id: true,
+        email: true,
+        appId: true,
+        externalUserId: true,
+      },
+    });
+
+    if (!billingCustomer) {
+      return halt(ctx, `No billing customer for Stripe customer ${customerId}`);
+    }
+
+    return {
+      ...ctx,
+      data: { ...ctx.data, billingCustomer },
+    };
+  },
+
+  findSubscription: async (
+    ctx: PipelineContext<InvoicePipelineData>,
+  ): Promise<PipelineContext<InvoicePipelineData>> => {
+    const { invoice } = ctx.data;
+
+    const stripeSubId = extractSubscriptionIdFromInvoice(invoice);
+
+    if (!stripeSubId) {
+      return log(ctx, "[invoice] No subscription linked to invoice");
+    }
+
+    const subscription = await prisma.subscription.findUnique({
+      where: { stripeSubscriptionId: stripeSubId },
+      select: { id: true, plan: true, status: true },
+    });
+
+    return {
+      ...ctx,
+      data: {
+        ...ctx.data,
+        subscription: subscription as { id: string; plan: Plan } | null,
+      },
+    };
+  },
+
+  persistPaymentEvent: async (
+    ctx: PipelineContext<InvoicePipelineData>,
+  ): Promise<PipelineContext<InvoicePipelineData>> => {
+    const { invoice, billingCustomer } = ctx.data;
+
+    const stripeSubId = extractSubscriptionIdFromInvoice(invoice);
+
+    await prisma.paymentEvent.create({
+      data: {
+        billingCustomerId: billingCustomer!.id,
+        stripeInvoiceId: invoice.id,
+        stripeSubscriptionId: stripeSubId ?? null,
+        type: "payment_succeeded",
+        amount: invoice.amount_paid,
+        currency: invoice.currency,
+      },
+    });
+
+    return log(
+      ctx,
+      `[invoice] Recorded successful payment for invoice ${invoice.id}`,
+    );
+  },
+
+  reactivateSubscriptionIfNeeded: async (
+    ctx: PipelineContext<InvoicePipelineData>,
+  ): Promise<PipelineContext<InvoicePipelineData>> => {
+    const { subscription } = ctx.data;
+
+    if (!subscription) {
+      return ctx;
+    }
+
+    // Check if subscription was in past_due status
+    const currentSub = await prisma.subscription.findUnique({
+      where: { id: subscription.id },
+      select: { status: true },
+    });
+
+    if (currentSub?.status === "past_due") {
+      // Reactivate subscription
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { status: "active" },
+      });
+
+      await prisma.subscriptionEvent.create({
+        data: {
+          subscriptionId: subscription.id,
+          type: "payment_succeeded",
+          fromPlan: subscription.plan,
+          toPlan: subscription.plan,
+        },
+      });
+
+      return log(
+        ctx,
+        `[invoice] Reactivated subscription ${subscription.id} from past_due`,
+      );
+    }
+
+    return log(
+      ctx,
+      `[invoice] Subscription ${subscription.id} payment confirmed`,
+    );
+  },
+};
+
+/** Handles invoice.payment_succeeded: records success and reactivates past_due subscriptions */
+async function handleInvoicePaymentSucceeded(
+  event: Stripe.Event,
+): Promise<void> {
+  const invoice = event.data.object as Stripe.Invoice;
+
+  // Skip $0 invoices (trials, free plans)
+  if (invoice.amount_paid === 0) {
+    logger.info(`[invoice] Skipping $0 invoice ${invoice.id}`);
+    return;
+  }
+
+  await runPipeline(createContext(event, { invoice }), [
+    invoiceSucceededSteps.findBillingCustomer,
+    invoiceSucceededSteps.findSubscription,
+    invoiceSucceededSteps.persistPaymentEvent,
+    invoiceSucceededSteps.reactivateSubscriptionIfNeeded,
+  ]);
+}
+
+// =============================================================================
 // WEBHOOK HANDLER REGISTRY
 // =============================================================================
 
@@ -701,6 +1086,8 @@ const webhookHandlers: Record<string, WebhookHandler> = {
   "checkout.session.completed": handleCheckoutSessionCompleted,
   "customer.subscription.updated": handleSubscriptionUpdated,
   "customer.subscription.deleted": handleSubscriptionDeleted,
+  "invoice.payment_failed": handleInvoicePaymentFailed,
+  "invoice.payment_succeeded": handleInvoicePaymentSucceeded,
 };
 
 // =============================================================================

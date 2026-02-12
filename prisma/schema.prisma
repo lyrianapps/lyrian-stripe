@@ -32,6 +32,8 @@ enum SubscriptionEventType {
   canceled
   renewed
   reactivated
+  payment_failed
+  payment_succeeded
 }
 
 model App {
@@ -55,6 +57,7 @@ model BillingCustomer {
 
   subscriptions   Subscription[]
   billingSessions BillingSession[]
+  paymentEvents   PaymentEvent[]
 
   @@unique([appId, externalUserId], name: "appId_externalUserId")
 }
@@ -126,6 +129,37 @@ model SubscriptionEvent {
   subscription Subscription @relation(fields: [subscriptionId], references: [id])
 
   @@index([subscriptionId])
+}
+
+model PaymentEvent {
+  id                String @id @default(cuid())
+  billingCustomerId String
+
+  stripeInvoiceId      String
+  stripeSubscriptionId String?
+
+  type     PaymentEventType
+  amount   Int // Amount in cents
+  currency String           @default("usd")
+
+  // For failed payments
+  failureCode    String?
+  failureMessage String?
+  attemptCount   Int       @default(1)
+  nextRetryAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  billingCustomer BillingCustomer @relation(fields: [billingCustomerId], references: [id])
+
+  @@index([billingCustomerId])
+  @@index([stripeInvoiceId])
+}
+
+enum PaymentEventType {
+  payment_succeeded
+  payment_failed
+  payment_action_required
 }
 
 model StripeEvent {

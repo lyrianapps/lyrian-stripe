@@ -7,6 +7,7 @@ import { Paragraph } from "@/app/components/Paragraph";
 import SubscriptionPlans from "@/app/components/SubscriptionPlans";
 import { RemainingMinutesClient } from "@/app/components/RemainingMinutesClient";
 import { ManageBillingButton } from "@/app/components/ManageBillingButton";
+import { PaymentWarningBanner } from "@/app/components/PaymentWarningBanner";
 
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
@@ -30,6 +31,24 @@ export default async function SubscriptionPage({
   const subscription = await prisma.subscription.findFirst({
     where: { billingCustomerId: session.billingCustomerId },
   });
+
+  // Check for recent failed payments (last 30 days)
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const failedPayment = subscription
+    ? await prisma.paymentEvent.findFirst({
+        where: {
+          billingCustomerId: subscription.billingCustomerId,
+          stripeSubscriptionId: subscription.stripeSubscriptionId,
+          type: "payment_failed",
+          createdAt: { gte: thirtyDaysAgo },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
+
+  const hasFailedPayments = Boolean(failedPayment);
 
   const subscriptionData = {
     currentPeriodStart: subscription?.currentPeriodStart,
@@ -59,6 +78,8 @@ export default async function SubscriptionPage({
       <Heading level={1} className="mb-6 flex items-center gap-2">
         <CreditCard className="w-7 h-7 text-blue-600" /> Subscription
       </Heading>
+
+      {hasFailedPayments && <PaymentWarningBanner returnUrl={returnUrl} />}
 
       <Paragraph>
         Manage your subscription plan. Upgrade, downgrade, or cancel anytime.

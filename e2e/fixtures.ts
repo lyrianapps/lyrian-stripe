@@ -72,9 +72,14 @@ export async function createTestSubscription(
   options: {
     plan?: string;
     cancelAtPeriodEnd?: boolean;
+    hasFailedPayment?: boolean;
   } = {},
 ): Promise<void> {
-  const { plan = "basic", cancelAtPeriodEnd = false } = options;
+  const {
+    plan = "basic",
+    cancelAtPeriodEnd = false,
+    hasFailedPayment = false,
+  } = options;
 
   // Get stored user info for this page
   const userInfo = testUserStore.get(page);
@@ -93,6 +98,7 @@ export async function createTestSubscription(
         externalUserId: userInfo.externalUserId,
         plan,
         cancelAtPeriodEnd,
+        hasFailedPayment,
       },
     },
   );

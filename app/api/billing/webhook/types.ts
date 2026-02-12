@@ -72,4 +72,28 @@ export interface DeletePipelineData {
   accessEndsAt?: Date | null;
 }
 
+// =============================================================================
+// INVOICE/PAYMENT PIPELINE TYPES
+// =============================================================================
+
+export interface InvoicePipelineData {
+  invoice: Stripe.Invoice;
+  billingCustomer?: {
+    id: string;
+    email: string | null;
+    appId: string;
+    externalUserId: string;
+  } | null;
+  subscription?: {
+    id: string;
+    plan: Plan;
+  } | null;
+  failureInfo?: {
+    code: string | null;
+    message: string | null;
+    attemptCount: number;
+    nextRetryAt: Date | null;
+  };
+}
+
 export type WebhookHandler = (event: Stripe.Event) => Promise<void>;

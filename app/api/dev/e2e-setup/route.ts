@@ -3,13 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { logError } from "@/app/middleware/logger";
-import { Plan } from "@/lib/generated/prisma/enums";
+import { Plan, PaymentEventType } from "@/lib/generated/prisma/enums";
 
 const E2ESetupSchema = z.object({
   appId: z.string().min(1),
   externalUserId: z.string().min(1),
   plan: z.enum(["free_trial", "basic", "pro"]).optional(),
   cancelAtPeriodEnd: z.boolean().optional(),
+  hasFailedPayment: z.boolean().optional(),
 });
 
 /**
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
     externalUserId,
     plan,
     cancelAtPeriodEnd = false,
+    hasFailedPayment = false,
   } = parsed.data;
 
   try {
@@ -88,12 +90,30 @@ export async function POST(req: NextRequest) {
           stripePriceId: `price_test_${plan}`,
           stripeProductId: `prod_test_${plan}`,
           plan: plan as Plan,
-          status: "active",
+          status: hasFailedPayment ? "past_due" : "active",
           currentPeriodStart: now,
           currentPeriodEnd: end,
           cancelAtPeriodEnd,
         },
       });
+
+      // Create a failed payment event if requested
+      if (hasFailedPayment) {
+        await prisma.paymentEvent.create({
+          data: {
+            billingCustomerId: customer.id,
+            stripeSubscriptionId: subscription.stripeSubscriptionId,
+            stripeInvoiceId: `in_test_${randomBytes(8).toString("hex")}`,
+            type: PaymentEventType.payment_failed,
+            amount: 2900, // $29.00
+            currency: "usd",
+            failureCode: "card_declined",
+            failureMessage: "Your card was declined.",
+            attemptCount: 1,
+            nextRetryAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days
+          },
+        });
+      }
     }
 
     // Create a billing session with proper bs_ prefix
