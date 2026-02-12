@@ -9,6 +9,9 @@
     "lint": "eslint",
     "test": "dotenv -e .env.test -- vitest run",
     "test:watch": "dotenv -e .env.test -- vitest",
+    "test:e2e": "dotenv -e .env.test -- playwright test",
+    "test:e2e:headed": "dotenv -e .env.test -- playwright test --headed",
+    "test:e2e:ui": "dotenv -e .env.test -- playwright test --ui",
     "test:migrate": "dotenv -e .env.test -- prisma migrate deploy",
     "create-test-subscription": "tsx scripts/create-test-subscription.ts"
   },
@@ -30,6 +33,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

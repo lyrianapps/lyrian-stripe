@@ -3,6 +3,8 @@ name: Deploy to Cloud Run
 on:
   push:
     branches: [ develop ]
+  pull_request:
+    branches: [ develop, main ]
   workflow_dispatch:
 
 
@@ -12,8 +14,88 @@ env:
   SERVICE_NAME: lyrian-stripe
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lyrian_billing_test
+        ports:
+        - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: "yarn"
+
+    - name: Install dependencies
+      run: yarn install --frozen-lockfile
+
+    - name: Generate Prisma Client
+      run: npx prisma generate
+
+    - name: Run database migrations
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lyrian_billing_test
+      run: npx prisma migrate deploy
+
+    - name: Run unit/integration tests
+      env:
+        TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lyrian_billing_test
+        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
+        CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        STRIPE_PK_KEY: ${{ secrets.STRIPE_PK_KEY }}
+        STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        STRIPE_FREE_PRICE_ID: ${{ secrets.STRIPE_FREE_PRICE_ID }}
+        STRIPE_BASIC_PRICE_ID: ${{ secrets.STRIPE_BASIC_PRICE_ID }}
+        STRIPE_FREE_PRODUCT_ID: ${{ secrets.STRIPE_FREE_PRODUCT_ID }}
+        STRIPE_BASIC_PRODUCT_ID: ${{ secrets.STRIPE_BASIC_PRODUCT_ID }}
+        NEXT_PUBLIC_APP_URL: http://localhost:3000
+      run: yarn test
+
+    - name: Install Playwright Browsers
+      run: npx playwright install --with-deps chromium
+
+    - name: Run E2E tests
+      env:
+        TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lyrian_billing_test
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lyrian_billing_test
+        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
+        CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        STRIPE_PK_KEY: ${{ secrets.STRIPE_PK_KEY }}
+        STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        STRIPE_FREE_PRICE_ID: ${{ secrets.STRIPE_FREE_PRICE_ID }}
+        STRIPE_BASIC_PRICE_ID: ${{ secrets.STRIPE_BASIC_PRICE_ID }}
+        STRIPE_FREE_PRODUCT_ID: ${{ secrets.STRIPE_FREE_PRODUCT_ID }}
+        STRIPE_BASIC_PRODUCT_ID: ${{ secrets.STRIPE_BASIC_PRODUCT_ID }}
+        NEXT_PUBLIC_APP_URL: http://localhost:3000
+      run: yarn test:e2e
+
+    - name: Upload Playwright Report
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: playwright-report
+        path: playwright-report/
+        retention-days: 7
+
   build-and-deploy:
     runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
 
     steps:
     - name: Checkout
