@@ -18,6 +18,7 @@ export function PlanCard({
   price,
   current,
   onUpgrade,
+  loading,
 }: PlanCardProps) {
   return (
     <div
@@ -44,7 +45,7 @@ export function PlanCard({
             variant="outline"
             iconLeft={<ArrowUpRight className="w-4 h-4" />}
             onClick={onUpgrade}
-            loading={!!(typeof loading !== "undefined" && loading)}
+            loading={loading}
           >
             Upgrade
           </Button>
