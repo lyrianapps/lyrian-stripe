@@ -102,3 +102,38 @@ jobs:
           --add-cloudsql-instances lyrian-billing:us-central1:lyrian-billing-db \
           --set-env-vars "NODE_ENV=production" \
           --set-secrets "DATABASE_URL=DATABASE_URL:latest,SAAS_JWT_SECRET=SAAS_JWT_SECRET:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,STRIPE_PK_KEY=STRIPE_PK_KEY:latest,STRIPE_FREE_PRICE_ID=STRIPE_FREE_PRICE_ID:latest,STRIPE_BASIC_PRICE_ID=STRIPE_BASIC_PRICE_ID:latest,STRIPE_FREE_PRODUCT_ID=STRIPE_FREE_PRODUCT_ID:latest,STRIPE_BASIC_PRODUCT_ID=STRIPE_BASIC_PRODUCT_ID:latest,CRON_SECRET=CRON_SECRET:latest"
+
+  migrate:
+    runs-on: ubuntu-latest
+    needs: build-and-deploy
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: "yarn"
+
+    - name: Install dependencies
+      run: yarn install --frozen-lockfile
+
+    - name: Google Auth
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Install Cloud SQL Auth Proxy
+      run: |
+        curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.3/cloud-sql-proxy.linux.amd64
+        chmod +x cloud-sql-proxy
+
+    - name: Run Prisma Migrations
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL_DIRECT }}
+      run: |
+        ./cloud-sql-proxy lyrian-billing:us-central1:lyrian-billing-db --port 5432 &
+        sleep 5
+        npx prisma migrate deploy
