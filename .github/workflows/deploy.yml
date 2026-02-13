@@ -99,5 +99,6 @@ jobs:
           --region ${{ env.REGION }} \
           --platform managed \
           --allow-unauthenticated \
+          --add-cloudsql-instances lyrian-billing:us-central1:lyrian-billing-db \
           --set-env-vars "NODE_ENV=production" \
           --set-secrets "DATABASE_URL=DATABASE_URL:latest,SAAS_JWT_SECRET=SAAS_JWT_SECRET:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,STRIPE_PK_KEY=STRIPE_PK_KEY:latest,STRIPE_FREE_PRICE_ID=STRIPE_FREE_PRICE_ID:latest,STRIPE_BASIC_PRICE_ID=STRIPE_BASIC_PRICE_ID:latest,STRIPE_FREE_PRODUCT_ID=STRIPE_FREE_PRODUCT_ID:latest,STRIPE_BASIC_PRODUCT_ID=STRIPE_BASIC_PRODUCT_ID:latest,CRON_SECRET=CRON_SECRET:latest"
