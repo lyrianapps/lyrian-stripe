@@ -2,6 +2,28 @@
 
 A centralized billing service that handles Stripe subscriptions for multiple SaaS applications.
 
+> ⚠️ **Disclaimer: Not Production Ready**
+>
+> This software is currently in active development and is **not ready for production use**. The following features are still pending:
+>
+> - **Email notifications** - No email flow for subscription events (welcome, payment failed, cancellation, etc.)
+> - **Dynamic pricing configuration** - Currently, Stripe price/product IDs are hardcoded as environment variables. In a production system, each SaaS app should be able to register its own pricing tiers dynamically.
+>
+> ### Current Limitation: Hardcoded Pricing
+>
+> The billing app currently uses global environment variables for Stripe pricing:
+>
+> ```env
+> STRIPE_FREE_PRICE_ID=price_xxx
+> STRIPE_BASIC_PRICE_ID=price_xxx
+> STRIPE_FREE_PRODUCT_ID=prod_xxx
+> STRIPE_BASIC_PRODUCT_ID=prod_xxx
+> ```
+>
+> **Problem:** All SaaS apps (saas-a, saas-b, etc.) share the same price/product IDs.
+>
+> **Future state:** Each SaaS app should register its own Stripe products and pricing when onboarding, allowing different apps to have different pricing structures.
+
 ## Overview
 
 This billing app allows you to:
