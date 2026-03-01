@@ -52,6 +52,11 @@ jobs:
     - name: Register App with Plans
       env:
         DATABASE_URL: ${{ secrets.DATABASE_URL_DIRECT }}
+        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
+        STRIPE_PK_KEY: ${{ secrets.STRIPE_PK_KEY }}
+        STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        CRON_SECRET: ${{ secrets.CRON_SECRET }}
       run: |
         ./cloud-sql-proxy lyrian-billing:us-central1:lyrian-billing-db --port 5432 &
         sleep 5
