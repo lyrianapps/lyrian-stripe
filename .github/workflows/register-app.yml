@@ -1,0 +1,67 @@
+name: Register App
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: 'App ID (e.g., referral_analytics)'
+        required: true
+        type: string
+      app_name:
+        description: 'App Display Name (e.g., Referral Analytics)'
+        required: true
+        type: string
+      plans_file:
+        description: 'Plans JSON filename in repo root (e.g., referral_analytics-plans.json)'
+        required: true
+        type: string
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+
+jobs:
+  register-app:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: "yarn"
+
+    - name: Install dependencies
+      run: yarn install --frozen-lockfile
+
+    - name: Generate Prisma Client
+      run: npx prisma generate
+
+    - name: Google Auth
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Install Cloud SQL Auth Proxy
+      run: |
+        curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.3/cloud-sql-proxy.linux.amd64
+        chmod +x cloud-sql-proxy
+
+    - name: Register App with Plans
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL_DIRECT }}
+      run: |
+        ./cloud-sql-proxy lyrian-billing:us-central1:lyrian-billing-db --port 5432 &
+        sleep 5
+
+        echo "📝 Registering app: ${{ inputs.app_id }}"
+        echo "📄 Using plans file: ${{ inputs.plans_file }}"
+
+        # Run the create-app script
+        npx tsx scripts/create-app.ts "${{ inputs.app_id }}" "${{ inputs.app_name }}" "./${{ inputs.plans_file }}"
+
+        echo ""
+        echo "⚠️  IMPORTANT: Copy the API key from the output above!"
+        echo "⚠️  It will NOT be shown again!"
