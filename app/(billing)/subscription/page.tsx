@@ -11,6 +11,7 @@ import { PaymentWarningBanner } from "@/app/components/PaymentWarningBanner";
 
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { AppPlan } from "@/lib/utils/types";
 
 export default async function SubscriptionPage({
   searchParams,
@@ -27,6 +28,24 @@ export default async function SubscriptionPage({
   console.log("session", session);
 
   if (!session) redirect("/unauthorized");
+
+  // Fetch app plans for this user's app
+  const appPlans = await prisma.appPlan.findMany({
+    where: {
+      appId: session.appId,
+      isActive: true,
+    },
+    orderBy: { sortOrder: "asc" },
+    select: {
+      planKey: true,
+      name: true,
+      description: true,
+      price: true,
+      currency: true,
+      interval: true,
+      stripePriceId: true,
+    },
+  });
 
   const subscription = await prisma.subscription.findFirst({
     where: { billingCustomerId: session.billingCustomerId },
@@ -103,10 +122,12 @@ export default async function SubscriptionPage({
 
       <SubscriptionPlans
         currentPlan={subscription?.plan ?? "free_trial"}
+        currentPriceId={subscription?.stripePriceId}
         appId={session.appId}
         externalUserId={session.externalUserId}
         {...subscriptionData}
         returnUrl={returnUrl}
+        plans={appPlans as AppPlan[]}
       />
     </div>
   );

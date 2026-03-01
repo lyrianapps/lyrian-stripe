@@ -21,13 +21,6 @@ const envSchema = z.object({
     .or(z.string().startsWith("sk_")),
   STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_"),
 
-  // Stripe Price IDs
-  STRIPE_FREE_PRICE_ID: z.string().startsWith("price_"),
-  STRIPE_BASIC_PRICE_ID: z.string().startsWith("price_"),
-
-  // Stripe Product IDs
-  STRIPE_FREE_PRODUCT_ID: z.string().startsWith("prod_"),
-  STRIPE_BASIC_PRODUCT_ID: z.string().startsWith("prod_"),
   // Dev admin token for gating dev-only routes (set in non-production only)
   DEV_ADMIN_TOKEN: z.string().min(8).optional(),
 });

@@ -191,24 +191,66 @@ async function getPlanFromPriceId(priceId: string): Promise<Plan | null> {
   return planConfig?.plan ?? null;
 }
 
-/** Finds local subscription record by Stripe subscription ID */
+/** Looks up internal Plan enum from Stripe price ID via AppPlan table (new per-app pricing) */
+async function getPlanFromAppPlan(
+  appId: string,
+  priceId: string,
+): Promise<Plan | null> {
+  logger.info(
+    `[data] Looking up AppPlan for app ${appId}, price ID: ${priceId}`,
+  );
+  const appPlan = await prisma.appPlan.findFirst({
+    where: {
+      appId,
+      stripePriceId: priceId,
+    },
+  });
+  if (appPlan) {
+    // Map planKey to Plan enum - planKey should match Plan enum values
+    const plan = appPlan.planKey as Plan;
+    if (PLAN_HIERARCHY.includes(plan)) {
+      logger.info(`[data] Found AppPlan: ${appPlan.planKey} -> ${plan}`);
+      return plan;
+    }
+    logger.error(
+      `[data] AppPlan planKey '${appPlan.planKey}' doesn't match Plan enum. ` +
+        `Valid values: ${PLAN_HIERARCHY.join(", ")}. ` +
+        `Fix this by running: UPDATE "AppPlan" SET "planKey" = '<correct_value>' WHERE id = '${appPlan.id}'`,
+    );
+    return null;
+  }
+  logger.warn(`[data] No AppPlan found for app ${appId}, price ID: ${priceId}`);
+  return null;
+}
+
+/** Finds local subscription record by Stripe subscription ID, includes appId from billingCustomer */
 async function findSubscriptionByStripeId(stripeSubscriptionId: string) {
   logger.info(
     `[data] Finding subscription by Stripe ID: ${stripeSubscriptionId}`,
   );
   const subscription = await prisma.subscription.findUnique({
     where: { stripeSubscriptionId },
+    include: {
+      billingCustomer: {
+        select: { appId: true },
+      },
+    },
   });
   if (subscription) {
     logger.info(
-      `[data] Found subscription: ${subscription.id} (status: ${subscription.status})`,
+      `[data] Found subscription: ${subscription.id} (status: ${subscription.status}, appId: ${subscription.billingCustomer.appId})`,
     );
+    // Flatten appId onto the subscription object for easier access
+    return {
+      ...subscription,
+      appId: subscription.billingCustomer.appId,
+    };
   } else {
     logger.info(
       `[data] No subscription found for Stripe ID: ${stripeSubscriptionId}`,
     );
   }
-  return subscription;
+  return null;
 }
 
 /** Finds active subscription for a billing customer (excludes canceled) */
@@ -360,9 +402,13 @@ const checkoutSteps = {
   resolvePlan: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
-    const { itemData } = ctx.data;
+    const { itemData, metadata } = ctx.data;
 
-    const plan = await getPlanFromPriceId(itemData!.priceId);
+    // Try AppPlan first (new per-app pricing), fall back to PlanConfig (legacy)
+    let plan = await getPlanFromAppPlan(metadata!.appId, itemData!.priceId);
+    if (!plan) {
+      plan = await getPlanFromPriceId(itemData!.priceId);
+    }
     if (!plan) {
       return halt(ctx, `Unknown price ID: ${itemData!.priceId}`);
     }
@@ -532,9 +578,16 @@ const updateSteps = {
   resolvePlan: async (
     ctx: PipelineContext<UpdatePipelineData>,
   ): Promise<PipelineContext<UpdatePipelineData>> => {
-    const { itemData } = ctx.data;
+    const { itemData, existingSubscription } = ctx.data;
 
-    const plan = await getPlanFromPriceId(itemData!.priceId);
+    // Try AppPlan first (new per-app pricing), fall back to PlanConfig (legacy)
+    let plan = await getPlanFromAppPlan(
+      existingSubscription!.appId,
+      itemData!.priceId,
+    );
+    if (!plan) {
+      plan = await getPlanFromPriceId(itemData!.priceId);
+    }
     if (!plan) {
       return halt(ctx, `Unknown price ID: ${itemData!.priceId}`);
     }

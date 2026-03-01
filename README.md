@@ -7,22 +7,6 @@ A centralized billing service that handles Stripe subscriptions for multiple Saa
 > This software is currently in active development and is **not ready for production use**. The following features are still pending:
 >
 > - **Email notifications** - No email flow for subscription events (welcome, payment failed, cancellation, etc.)
-> - **Dynamic pricing configuration** - Currently, Stripe price/product IDs are hardcoded as environment variables. In a production system, each SaaS app should be able to register its own pricing tiers dynamically.
->
-> ### Current Limitation: Hardcoded Pricing
->
-> The billing app currently uses global environment variables for Stripe pricing:
->
-> ```env
-> STRIPE_FREE_PRICE_ID=price_xxx
-> STRIPE_BASIC_PRICE_ID=price_xxx
-> STRIPE_FREE_PRODUCT_ID=prod_xxx
-> STRIPE_BASIC_PRODUCT_ID=prod_xxx
-> ```
->
-> **Problem:** All SaaS apps (saas-a, saas-b, etc.) share the same price/product IDs.
->
-> **Future state:** Each SaaS app should register its own Stripe products and pricing when onboarding, allowing different apps to have different pricing structures.
 
 ## Overview
 
@@ -32,6 +16,7 @@ This billing app allows you to:
 - Handle Stripe webhooks centrally
 - Provide a unified billing portal UI for end users
 - Let SaaS backends check subscription status via API
+- **Each SaaS app configures its own pricing plans** - no hardcoded global prices
 
 ## Architecture
 
@@ -101,15 +86,53 @@ Used automatically when users navigate to the billing portal through your app.
 
 ## Integration Guide
 
-### Step 1: Register Your SaaS App
+### Step 1: Register Your SaaS App with Pricing Plans
 
-Generate an API key for your SaaS app:
+First, create a pricing configuration file for your app:
+
+```json
+// plans.json
+[
+  {
+    "planKey": "free_trial",
+    "name": "Free Trial",
+    "description": "Try it free for 14 days",
+    "price": 0,
+    "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
+    "stripePriceId": "price_YOUR_FREE_PRICE_ID"
+  },
+  {
+    "planKey": "basic",
+    "name": "Basic",
+    "description": "For individuals and small teams",
+    "price": 1000,
+    "stripeProductId": "prod_YOUR_BASIC_PRODUCT_ID",
+    "stripePriceId": "price_YOUR_BASIC_PRICE_ID"
+  },
+  {
+    "planKey": "pro",
+    "name": "Pro",
+    "description": "For businesses and power users",
+    "price": 3000,
+    "stripeProductId": "prod_YOUR_PRO_PRODUCT_ID",
+    "stripePriceId": "price_YOUR_PRO_PRICE_ID"
+  }
+]
+```
+
+Then register your app with its pricing:
 
 ```bash
-npx tsx scripts/create-app.ts <app-id> "<app-name>"
+npx tsx scripts/create-app.ts <app-id> "<app-name>" <plans.json>
 
 # Example:
-npx tsx scripts/create-app.ts saas-a "My Todo App"
+npx tsx scripts/create-app.ts saas-a "My Todo App" ./plans.json
+```
+
+To add or update plans for an existing app:
+
+```bash
+npx tsx scripts/add-plans.ts <app-id> <plans.json>
 ```
 
 Save the API key securely - it won't be shown again.
@@ -229,25 +252,24 @@ export async function checkPremiumAccess(userId: string) {
 
 ### Public Routes
 
-| Endpoint               | Method | Description                                   |
-| ---------------------- | ------ | --------------------------------------------- |
-| `/api/billing/portal`  | GET    | Entry point for billing portal (JWT in query) |
-| `/api/billing/webhook` | POST   | Stripe webhook handler                        |
+| Endpoint                  | Method | Description                                   |
+| ------------------------- | ------ | --------------------------------------------- |
+| `/api/billing/portal`     | GET    | Entry point for billing portal (JWT in query) |
+| `/api/billing/webhook`    | POST   | Stripe webhook handler                        |
+| `/api/apps/[appId]/plans` | GET    | Get pricing plans for a specific app          |
 
 ## Environment Variables
 
-| Variable                  | Description                                 |
-| ------------------------- | ------------------------------------------- |
-| `DATABASE_URL`            | PostgreSQL connection string                |
-| `SAAS_JWT_SECRET`         | Shared secret for JWT signing/verification  |
-| `STRIPE_SECRET_KEY`       | Stripe API secret key                       |
-| `STRIPE_WEBHOOK_SECRET`   | Stripe webhook signing secret               |
-| `STRIPE_PK_KEY`           | Stripe publishable key                      |
-| `STRIPE_FREE_PRICE_ID`    | Stripe price ID for free tier               |
-| `STRIPE_BASIC_PRICE_ID`   | Stripe price ID for basic tier              |
-| `STRIPE_FREE_PRODUCT_ID`  | Stripe product ID for free tier             |
-| `STRIPE_BASIC_PRODUCT_ID` | Stripe product ID for basic tier            |
-| `CRON_SECRET`             | Secret for authenticating cron job requests |
+| Variable                | Description                                 |
+| ----------------------- | ------------------------------------------- |
+| `DATABASE_URL`          | PostgreSQL connection string                |
+| `SAAS_JWT_SECRET`       | Shared secret for JWT signing/verification  |
+| `STRIPE_SECRET_KEY`     | Stripe API secret key                       |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret               |
+| `STRIPE_PK_KEY`         | Stripe publishable key                      |
+| `CRON_SECRET`           | Secret for authenticating cron job requests |
+
+> **Note:** Stripe price/product IDs are no longer environment variables. Each SaaS app registers its own pricing plans using the `create-app.ts` or `add-plans.ts` scripts.
 
 ## Development
 

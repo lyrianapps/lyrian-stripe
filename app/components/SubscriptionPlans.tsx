@@ -12,23 +12,38 @@ import { SubscriptionPlansProps } from "@/lib/utils/types";
 
 import { useState } from "react";
 
+/**
+ * Format price from cents to display string
+ */
+function formatPrice(
+  cents: number,
+  currency: string,
+  interval: string,
+): string {
+  const amount = (cents / 100).toFixed(cents % 100 === 0 ? 0 : 2);
+  const symbol =
+    currency.toUpperCase() === "USD" ? "$" : currency.toUpperCase();
+  return `${symbol}${amount}/${interval}`;
+}
+
 export default function SubscriptionPlans({
   currentPlan,
+  currentPriceId,
   appId,
   externalUserId,
   currentPeriodStart,
   currentPeriodEnd,
   cancelAtPeriodEnd,
   returnUrl,
+  plans,
 }: SubscriptionPlansProps) {
-  const [loading, setLoading] = useState(false);
+  const [loadingPriceId, setLoadingPriceId] = useState<string | null>(null);
   const [canceling, setCanceling] = useState(false);
   const [isCanceled, setIsCanceled] = useState(cancelAtPeriodEnd ?? false);
 
-  // Handles upgrade to Basic plan
-
-  const handleUpgradeToBasic = async () => {
-    setLoading(true);
+  // Handle upgrade/subscribe to a plan
+  const handleUpgrade = async (priceId: string) => {
+    setLoadingPriceId(priceId);
     try {
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
@@ -39,7 +54,7 @@ export default function SubscriptionPlans({
         body: JSON.stringify({
           appId,
           externalUserId,
-          plan: "basic",
+          priceId,
           returnUrl,
         }),
       });
@@ -52,7 +67,7 @@ export default function SubscriptionPlans({
     } catch (err) {
       alert("Network error");
     } finally {
-      setLoading(false);
+      setLoadingPriceId(null);
     }
   };
 
@@ -92,24 +107,36 @@ export default function SubscriptionPlans({
     }
   };
 
+  // Filter out free plans and current plan from upgrade options
+  const upgradePlans = plans.filter(
+    (plan) => plan.price > 0 && plan.stripePriceId !== currentPriceId,
+  );
+
   return (
     <>
       <div className="space-y-6 mt-8">
-        <PlanCard
-          name="Basic"
-          description="For individuals and small teams."
-          price="$10/mo"
-          current={currentPlan === "basic"}
-          onUpgrade={handleUpgradeToBasic}
-          loading={loading}
-        />
-        <PlanCard
-          name="Pro"
-          description="For businesses and power users."
-          price="$30/mo"
-          current={currentPlan === "pro"}
-          onUpgrade={() => alert("Upgrade to Pro")}
-        />
+        {plans.length === 0 ? (
+          <Paragraph className="text-gray-500">
+            No pricing plans have been configured for this app yet.
+          </Paragraph>
+        ) : (
+          plans
+            .filter((plan) => plan.price > 0) // Don't show free plans as upgrade options
+            .map((plan) => (
+              <PlanCard
+                key={plan.stripePriceId}
+                name={plan.name}
+                description={plan.description || ""}
+                price={formatPrice(plan.price, plan.currency, plan.interval)}
+                current={
+                  plan.stripePriceId === currentPriceId ||
+                  plan.planKey === currentPlan
+                }
+                onUpgrade={() => handleUpgrade(plan.stripePriceId)}
+                loading={loadingPriceId === plan.stripePriceId}
+              />
+            ))
+        )}
       </div>
       <div className="mt-10 border-t pt-6">
         <Paragraph className="mb-2">
@@ -138,7 +165,11 @@ export default function SubscriptionPlans({
               variant="outline"
               iconLeft={<XCircle className="w-4 h-4" />}
               onClick={handleCancel}
-              disabled={canceling || currentPlan === "free_trial"}
+              disabled={
+                canceling ||
+                currentPlan === "free" ||
+                currentPlan === "free_trial"
+              }
             >
               {canceling ? "Canceling..." : "Cancel Subscription"}
             </Button>

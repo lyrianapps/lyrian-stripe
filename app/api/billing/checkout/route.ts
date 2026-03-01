@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { CheckoutRequestSchema } from "@/lib/session/schemas";
-import { Plan } from "../../../../lib/generated/prisma/enums";
 import { env } from "@/env";
 import { withApiKey } from "@/lib/auth/apiKey";
 import { withRateLimit } from "@/lib/middleware/rateLimit";
@@ -46,8 +45,17 @@ async function findOrCreateBillingCustomer(
   return customer;
 }
 
-async function getPlanConfig(plan: Plan) {
-  return prisma.planConfig.findUnique({ where: { plan } });
+/**
+ * Validate that the priceId belongs to a configured plan for this app
+ */
+async function validateAppPlan(appId: string, priceId: string) {
+  return prisma.appPlan.findFirst({
+    where: {
+      appId,
+      stripePriceId: priceId,
+      isActive: true,
+    },
+  });
 }
 
 // Small helper for consistent error responses
@@ -73,28 +81,28 @@ const checkoutHandler = withApiKey(async (req: NextRequest) => {
     return errorResponse("Invalid request body", 400, parsed.error.flatten());
   }
 
-  const { appId, externalUserId, plan, email, returnUrl } = parsed.data;
+  const { appId, externalUserId, priceId, email, returnUrl } = parsed.data;
 
   await upsertApp(appId);
 
-  // 4. Find or create BillingCustomer
+  // Validate that this priceId is configured for this app
+  const appPlan = await validateAppPlan(appId, priceId);
+  if (!appPlan) {
+    return errorResponse(
+      "Invalid priceId for this app. Make sure the plan is configured.",
+      400,
+    );
+  }
+
+  // Find or create BillingCustomer
   const customer = await findOrCreateBillingCustomer(
     appId,
     externalUserId,
     email,
   );
 
-  // 5. Fetch plan config
-  const planConfig = await getPlanConfig(plan);
-
-  if (!planConfig) {
-    return errorResponse("Invalid plan", 400);
-  }
-
-  // 6. Create Stripe Checkout Session
+  // Create Stripe Checkout Session
   const appUrl = env.NEXT_PUBLIC_APP_URL;
-
-  console.log("return url miami", returnUrl);
 
   // Validate optional returnUrl to avoid open redirect vulnerabilities.
   let validatedReturnUrl: string | undefined;
@@ -104,15 +112,12 @@ const checkoutHandler = withApiKey(async (req: NextRequest) => {
       if (!["http:", "https:"].includes(u.protocol)) {
         return errorResponse("Invalid returnUrl protocol", 400);
       }
-      // Basic origin check (recommended: replace with per-app whitelist)
       if (!u.origin) return errorResponse("Invalid returnUrl", 400);
       validatedReturnUrl = returnUrl;
     } catch {
       return errorResponse("Invalid returnUrl", 400);
     }
   }
-
-  console.log("validated returl url", validatedReturnUrl);
 
   const successBase = `${appUrl}/subscription/success`;
   const cancelBase = `${appUrl}/subscription`;
@@ -131,7 +136,7 @@ const checkoutHandler = withApiKey(async (req: NextRequest) => {
     customer_email: email,
     line_items: [
       {
-        price: planConfig.stripePriceId,
+        price: priceId,
         quantity: 1,
       },
     ],
@@ -141,6 +146,7 @@ const checkoutHandler = withApiKey(async (req: NextRequest) => {
       appId,
       externalUserId,
       billingCustomerId: customer.id,
+      planKey: appPlan.planKey,
     },
   });
 

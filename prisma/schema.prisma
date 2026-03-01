@@ -42,6 +42,41 @@ model App {
   apiKey String? @unique
 
   customers BillingCustomer[]
+  plans     AppPlan[]
+}
+
+// Pricing plans configured per SaaS app
+model AppPlan {
+  id    String @id @default(cuid())
+  appId String
+
+  // Plan identifier (e.g., "free", "basic", "pro")
+  planKey String
+
+  // Display info
+  name        String // "Basic Plan", "Pro Plan"
+  description String? // "For individuals and small teams"
+  price       Int // Price in cents (e.g., 1000 = $10.00)
+  currency    String          @default("usd")
+  interval    BillingInterval @default(month)
+
+  // Stripe IDs (owned by the SaaS app's Stripe account)
+  stripeProductId String
+  stripePriceId   String
+
+  // Ordering for display
+  sortOrder Int @default(0)
+
+  // Soft delete / disable
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  app App @relation(fields: [appId], references: [id])
+
+  @@unique([appId, planKey])
+  @@index([appId])
 }
 
 model BillingCustomer {
