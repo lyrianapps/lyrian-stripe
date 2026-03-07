@@ -5,8 +5,6 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    setupFiles: ["./tests/setup.ts"],
-    include: ["tests/**/*.test.ts"],
     testTimeout: 30000,
     hookTimeout: 30000,
     // Run tests sequentially to avoid DB race conditions
@@ -14,6 +12,8 @@ export default defineConfig({
     sequence: {
       concurrent: false,
     },
+    include: ["tests/**/*.test.ts"],
+    setupFiles: ["./tests/setup.ts"],
   },
   resolve: {
     alias: {

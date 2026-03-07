@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "dotenv -e .env.test -- vitest run",
+    "test:unit": "vitest run --config vitest.config.unit.ts",
     "test:watch": "dotenv -e .env.test -- vitest",
     "test:e2e": "dotenv -e .env.test -- playwright test",
     "test:e2e:headed": "dotenv -e .env.test -- playwright test --headed",
@@ -29,6 +30,7 @@
     "rate-limiter-flexible": "^9.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "resend": "^6.9.3",
     "stripe": "^20.2.0",
     "winston": "^3.19.0",
     "zod": "^4.3.6"
