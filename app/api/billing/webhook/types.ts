@@ -47,6 +47,12 @@ export interface CheckoutPipelineData {
   plan?: Plan;
   stripeCustomerId?: string;
   period?: BillingPeriod;
+  // Email context
+  customerEmail?: string | null;
+  appName?: string;
+  planName?: string;
+  planAmount?: number | null;
+  planCurrency?: string | null;
 }
 
 // =============================================================================

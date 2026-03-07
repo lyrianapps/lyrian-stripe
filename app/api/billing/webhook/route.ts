@@ -7,6 +7,7 @@ import { Plan, SubscriptionStatus } from "@/lib/generated/prisma/enums";
 import { logger, logError } from "@/app/middleware/logger";
 import { env } from "@/env";
 import { checkRateLimit } from "@/lib/middleware/rateLimit";
+import { sendSubscriptionEmail } from "@/lib/email";
 import {
   PipelineContext,
   PipelineStep,
@@ -518,6 +519,62 @@ const checkoutSteps = {
 
     return log(ctx, `[checkout] Subscription created, plan: ${plan}`);
   },
+
+  fetchEmailContext: async (
+    ctx: PipelineContext<CheckoutPipelineData>,
+  ): Promise<PipelineContext<CheckoutPipelineData>> => {
+    const { metadata, itemData } = ctx.data;
+
+    // Fetch customer email and app name
+    const billingCustomer = await prisma.billingCustomer.findUnique({
+      where: { id: metadata!.billingCustomerId },
+      select: { email: true },
+    });
+
+    const app = await prisma.app.findUnique({
+      where: { id: metadata!.appId },
+      select: { name: true },
+    });
+
+    const appPlan = await prisma.appPlan.findFirst({
+      where: { appId: metadata!.appId, stripePriceId: itemData!.priceId },
+      select: { name: true, price: true, currency: true },
+    });
+
+    return {
+      ...ctx,
+      data: {
+        ...ctx.data,
+        customerEmail: billingCustomer?.email,
+        appName: app?.name || metadata!.appId,
+        planName: appPlan?.name || ctx.data.plan || "Subscription",
+        planAmount: appPlan?.price,
+        planCurrency: appPlan?.currency,
+      },
+    };
+  },
+
+  sendWelcomeEmail: async (
+    ctx: PipelineContext<CheckoutPipelineData>,
+  ): Promise<PipelineContext<CheckoutPipelineData>> => {
+    const { customerEmail, appName, planName, planAmount, planCurrency } =
+      ctx.data;
+
+    if (customerEmail) {
+      await sendSubscriptionEmail("subscription_created", {
+        to: customerEmail,
+        appName: appName || "App",
+        planName: planName || "Subscription",
+        amount: planAmount,
+        currency: planCurrency,
+      });
+    }
+
+    return log(
+      ctx,
+      `[checkout] Welcome email ${customerEmail ? "sent" : "skipped (no email)"}`,
+    );
+  },
 };
 
 /** Handles checkout.session.completed: creates subscription record from checkout session */
@@ -537,6 +594,8 @@ async function handleCheckoutSessionCompleted(
     checkoutSteps.fetchBillingPeriod,
     checkoutSteps.persistSubscription,
     checkoutSteps.logSubscriptionCreated,
+    checkoutSteps.fetchEmailContext,
+    checkoutSteps.sendWelcomeEmail,
   ]);
 }
 

@@ -21,6 +21,10 @@ const envSchema = z.object({
     .or(z.string().startsWith("sk_")),
   STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_"),
 
+  // Email (Resend)
+  RESEND_API_KEY: z.string().startsWith("re_").optional(),
+  FROM_EMAIL: z.string().email().optional(),
+
   // Dev admin token for gating dev-only routes (set in non-production only)
   DEV_ADMIN_TOKEN: z.string().min(8).optional(),
 });
