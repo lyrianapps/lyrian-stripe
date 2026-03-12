@@ -25,6 +25,16 @@ const statusHandler = withApiKey(async (request: NextRequest) => {
     );
   }
 
+  // Verify the app exists
+  const app = await prisma.app.findUnique({
+    where: { id: appId },
+    select: { id: true },
+  });
+
+  if (!app) {
+    return NextResponse.json({ error: "App not found" }, { status: 404 });
+  }
+
   const billingCustomer = await prisma.billingCustomer.findUnique({
     where: {
       appId_externalUserId: { appId, externalUserId },
