@@ -3,16 +3,23 @@ name: Register App
 on:
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Environment (dev or production)'
+        required: true
+        type: choice
+        options:
+        - dev
+        - production
       app_id:
-        description: 'App ID (e.g., referral_analytics)'
+        description: 'App ID (e.g., threads_app)'
         required: true
         type: string
       app_name:
-        description: 'App Display Name (e.g., Referral Analytics)'
+        description: 'App Display Name (e.g., Threads App)'
         required: true
         type: string
       plans_file:
-        description: 'Plans JSON filename in repo root (e.g., referral_analytics-plans.json)'
+        description: 'Plans JSON filename in repo root (e.g., threads_app_plans_dev.json for staging, threads_app_plans_prod.json for production)'
         required: true
         type: string
 
@@ -22,6 +29,7 @@ env:
 jobs:
   register-app:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
 
     steps:
     - name: Checkout
@@ -58,9 +66,10 @@ jobs:
         STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         CRON_SECRET: ${{ secrets.CRON_SECRET }}
       run: |
-        ./cloud-sql-proxy lyrian-billing:us-central1:lyrian-billing-db --port 5432 &
+        ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
         sleep 5
 
+        echo "🌍 Environment: ${{ inputs.environment }}"
         echo "📝 Registering app: ${{ inputs.app_id }}"
         echo "📄 Using plans file: ${{ inputs.plans_file }}"
 
