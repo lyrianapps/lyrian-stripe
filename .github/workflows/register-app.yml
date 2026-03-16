@@ -59,7 +59,7 @@ jobs:
 
     - name: Register App with Plans
       env:
-        DATABASE_URL: ${{ secrets.DATABASE_URL_DIRECT }}
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
         SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
         STRIPE_PK_KEY: ${{ secrets.STRIPE_PK_KEY }}
         STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}

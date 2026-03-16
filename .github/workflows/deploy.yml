@@ -131,7 +131,7 @@ jobs:
 
     - name: Run Prisma Migrations
       env:
-        DATABASE_URL: ${{ secrets.DATABASE_URL_DIRECT }}
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
       run: |
         ./cloud-sql-proxy lyrian-billing:us-central1:lyrian-apps-instance --port 5432 &
         sleep 5
