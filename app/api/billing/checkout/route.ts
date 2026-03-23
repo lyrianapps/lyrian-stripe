@@ -102,7 +102,7 @@ const checkoutHandler = withApiKey(async (req: NextRequest) => {
   );
 
   // Create Stripe Checkout Session
-  const appUrl = env.NEXT_PUBLIC_APP_URL;
+  const appUrl = env.BILLING_APP_URL;
 
   // Validate optional returnUrl to avoid open redirect vulnerabilities.
   let validatedReturnUrl: string | undefined;
