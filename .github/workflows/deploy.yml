@@ -99,7 +99,7 @@ jobs:
           --platform managed \
           --allow-unauthenticated \
           --add-cloudsql-instances lyrian-billing:us-central1:lyrian-apps-instance \
-          --set-env-vars "NODE_ENV=production,BILLING_APP_URL=https://lyrian-stripe-494926016713.us-central1.run.app/" \
+          --set-env-vars "NODE_ENV=production,BILLING_APP_URL=https://lyrian-stripe-494926016713.us-central1.run.app" \
           --set-secrets "DATABASE_URL=DATABASE_URL:latest,SAAS_JWT_SECRET=SAAS_JWT_SECRET:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,STRIPE_PK_KEY=STRIPE_PK_KEY:latest,CRON_SECRET=CRON_SECRET:latest"
 
   migrate:
