@@ -1,14 +1,19 @@
 import { logError } from "@/app/middleware/logger";
 import { NextRequest, NextResponse } from "next/server";
-import { createSession } from "@/lib/session";
-import { verifyJWT } from "@/lib/session";
+import { createSession, verifyJWT } from "@/lib/session";
 import { checkRateLimit } from "@/lib/middleware/rateLimit";
 
 export async function GET(req: NextRequest) {
+  // ✅ Always use explicit base URL (Cloud Run safe)
+  const origin = process.env.BILLING_APP_URL;
+
+  if (!origin) {
+    throw new Error("BILLING_APP_URL is not configured");
+  }
+
   // Rate limit check: 20 requests per minute
   const rateLimitResult = await checkRateLimit(req, "portal");
   if (!rateLimitResult.allowed) {
-    const origin = req.nextUrl.origin;
     const response = NextResponse.redirect(`${origin}/unauthorized`);
     Object.entries(rateLimitResult.headers).forEach(([key, value]) => {
       response.headers.set(key, value);
@@ -18,35 +23,44 @@ export async function GET(req: NextRequest) {
 
   try {
     const token = req.nextUrl.searchParams.get("token");
-    if (!token) return NextResponse.redirect("/unauthorized");
 
-    //verify token here (your JWT from SaaS)
+    if (!token) {
+      return NextResponse.redirect(`${origin}/unauthorized`);
+    }
+
+    // ✅ Verify token (JWT from SaaS)
     const payload = verifyJWT(token);
 
-    // create server-side session
+    // ✅ Create server-side session
     const sessionToken = await createSession({
       appId: payload.iss as string,
       externalUserId: payload.sub as string,
     });
 
-    // Build absolute URL for redirect and include optional returnUrl from the token
-    const origin = req.nextUrl.origin;
+    // ✅ Default redirect
     let redirectTo = `${origin}/subscription`;
+
+    // ✅ Safely handle optional returnUrl
     try {
       const returnUrl = payload.returnUrl as string | undefined;
+
       if (returnUrl) {
         const u = new URL(returnUrl);
-        if (["http:", "https:"].includes(u.protocol) && u.origin) {
-          redirectTo = `${redirectTo}?returnUrl=${encodeURIComponent(returnUrl)}&appId=${encodeURIComponent(
-            payload.iss as string,
-          )}`;
+
+        // Only allow valid http/https URLs
+        if (["http:", "https:"].includes(u.protocol)) {
+          redirectTo = `${redirectTo}?returnUrl=${encodeURIComponent(
+            returnUrl,
+          )}&appId=${encodeURIComponent(payload.iss as string)}`;
         }
       }
-    } catch (e) {
-      // ignore malformed returnUrl and proceed without it
+    } catch {
+      // Ignore malformed returnUrl
     }
 
     const response = NextResponse.redirect(redirectTo);
+
+    // ✅ Secure session cookie
     response.cookies.set("billing_session", sessionToken, {
       httpOnly: true,
       secure: true,
@@ -58,6 +72,6 @@ export async function GET(req: NextRequest) {
     return response;
   } catch (err) {
     logError(err, "billing/portal GET");
-    return NextResponse.redirect("/unauthorized");
+    return NextResponse.redirect(`${origin}/unauthorized`);
   }
 }
