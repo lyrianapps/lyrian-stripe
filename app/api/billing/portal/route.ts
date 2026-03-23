@@ -1,7 +1,7 @@
 import { logError } from "@/app/middleware/logger";
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, verifyJWT } from "@/lib/session";
-import { checkRateLimit } from "@/lib/middleware/rateLimit";
+// import { checkRateLimit } from "@/lib/middleware/rateLimit";
 
 export async function GET(req: NextRequest) {
   // ✅ Always use explicit base URL (Cloud Run safe)
@@ -12,14 +12,14 @@ export async function GET(req: NextRequest) {
   }
 
   // Rate limit check: 20 requests per minute
-  const rateLimitResult = await checkRateLimit(req, "portal");
-  if (!rateLimitResult.allowed) {
-    const response = NextResponse.redirect(`${origin}/unauthorized`);
-    Object.entries(rateLimitResult.headers).forEach(([key, value]) => {
-      response.headers.set(key, value);
-    });
-    return response;
-  }
+  // const rateLimitResult = await checkRateLimit(req, "portal");
+  // if (!rateLimitResult.allowed) {
+  //   const response = NextResponse.redirect(`${origin}/unauthorized`);
+  //   Object.entries(rateLimitResult.headers).forEach(([key, value]) => {
+  //     response.headers.set(key, value);
+  //   });
+  //   return response;
+  // }
 
   try {
     const token = req.nextUrl.searchParams.get("token");
