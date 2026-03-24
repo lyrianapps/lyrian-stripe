@@ -429,9 +429,17 @@ const checkoutSteps = {
       stripeSubscription!.customer,
     );
 
-    await prisma.billingCustomer.update({
+    await prisma.billingCustomer.upsert({
       where: { id: metadata!.billingCustomerId },
-      data: { stripeCustomerId },
+      update: {
+        stripeCustomerId,
+      },
+      create: {
+        id: metadata!.billingCustomerId,
+        stripeCustomerId,
+        appId: metadata!.appId,
+        externalUserId: metadata!.externalUserId,
+      },
     });
 
     return {
