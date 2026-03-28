@@ -8,6 +8,7 @@
  * Requires RESEND_API_KEY in .env (unless using --preview)
  */
 
+import "dotenv/config";
 import { env } from "../env";
 import {
   sendSubscriptionEmail,
