@@ -13,12 +13,101 @@ const rateLimitPool = isTestEnv
       max: 5, // Small pool just for rate limiting
     });
 
-// Rate limiter will auto-create the table on first use
+// Track initialization state to prevent race conditions on startup
+let postgresLimiterReady: Promise<void> | null = null;
+let isInitialized = false;
+
+/**
+ * Wrapper that handles Postgres rate limiter initialization gracefully.
+ * During initialization (first few requests on startup), requests are allowed through
+ * to prevent "Too many requests" errors while the rate limit table is being created.
+ */
+class SafeRateLimiter {
+  private limiter: RateLimiterPostgres | RateLimiterMemory;
+  private keyPrefix: string;
+  public points: number;
+
+  constructor(
+    limiter: RateLimiterPostgres | RateLimiterMemory,
+    keyPrefix: string,
+    points: number,
+  ) {
+    this.limiter = limiter;
+    this.keyPrefix = keyPrefix;
+    this.points = points;
+  }
+
+  async consume(key: string, pointsToConsume = 1) {
+    // If not initialized yet, allow the request through
+    // This prevents blocking during table creation
+    if (!isInitialized && postgresLimiterReady) {
+      try {
+        // Wait briefly for initialization, but don't block too long
+        await Promise.race([
+          postgresLimiterReady,
+          new Promise((resolve) => setTimeout(resolve, 100)),
+        ]);
+      } catch {
+        // If initialization fails, allow request through
+        return { remainingPoints: this.points - 1, msBeforeNext: 60000 };
+      }
+    }
+
+    try {
+      return await this.limiter.consume(key, pointsToConsume);
+    } catch (error) {
+      // If this is an initialization error (table not ready), allow the request
+      if (!isInitialized && isInitializationError(error)) {
+        console.warn(
+          `[RateLimit] ${this.keyPrefix}: Allowing request during initialization`,
+        );
+        return { remainingPoints: this.points - 1, msBeforeNext: 60000 };
+      }
+      // Otherwise, it's a legitimate rate limit rejection
+      throw error;
+    }
+  }
+}
+
+/**
+ * Check if an error is related to rate limiter initialization
+ */
+function isInitializationError(error: unknown): boolean {
+  if (error && typeof error === "object") {
+    // RateLimiterPostgres throws with msBeforeNext when rate limited
+    // Initialization errors won't have this property or will have different error structure
+    const hasRateLimitProps =
+      "msBeforeNext" in error && "remainingPoints" in error;
+    return !hasRateLimitProps;
+  }
+  return true;
+}
+
+// Initialize the Postgres rate limiter table on startup
+function initializePostgresLimiter(limiter: RateLimiterPostgres): void {
+  if (postgresLimiterReady) return;
+
+  postgresLimiterReady = new Promise<void>((resolve) => {
+    // Perform a dummy consume to trigger table creation
+    limiter
+      .consume("__init__", 0)
+      .then(() => {
+        isInitialized = true;
+        resolve();
+      })
+      .catch(() => {
+        // Table might already exist or there's an error - either way, mark as ready
+        isInitialized = true;
+        resolve();
+      });
+  });
+}
+
 const createRateLimiter = (
   keyPrefix: string,
   points: number,
   durationSeconds: number,
-) => {
+): SafeRateLimiter | RateLimiterMemory => {
   // In test environment, use in-memory limiter with high limits to avoid blocking tests
   if (isTestEnv) {
     return new RateLimiterMemory({
@@ -28,7 +117,7 @@ const createRateLimiter = (
     });
   }
 
-  return new RateLimiterPostgres({
+  const limiter = new RateLimiterPostgres({
     storeClient: rateLimitPool!,
     keyPrefix,
     points, // Number of requests
@@ -36,6 +125,11 @@ const createRateLimiter = (
     tableName: "rate_limits", // Shared table for all limiters
     tableCreated: false, // Will be created automatically
   });
+
+  // Trigger initialization on first limiter creation
+  initializePostgresLimiter(limiter);
+
+  return new SafeRateLimiter(limiter, keyPrefix, points);
 };
 
 /**
