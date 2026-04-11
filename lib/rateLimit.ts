@@ -186,6 +186,22 @@ export function getClientIdentifier(request: Request): string {
 }
 
 /**
+ * Extract client identifier scoped per user.
+ * Used for endpoints like /status that are called per-user — ensures each
+ * user gets their own rate limit bucket instead of all users from one API
+ * key sharing a single bucket.
+ */
+export function getClientIdentifierWithUser(request: Request): string {
+  const base = getClientIdentifier(request);
+  const url = new URL((request as { url: string }).url);
+  const externalUserId = url.searchParams.get("externalUserId");
+  if (externalUserId) {
+    return `${base}:${hashString(externalUserId)}`;
+  }
+  return base;
+}
+
+/**
  * Simple string hash for API key anonymization
  */
 function hashString(str: string): string {

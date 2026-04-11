@@ -11,16 +11,18 @@ import {
  *
  * @param limiterKey - Which rate limiter preset to use
  * @param handler - The API handler to wrap
+ * @param identifierFn - Optional custom function to derive the rate limit key (defaults to getClientIdentifier)
  * @returns Wrapped handler with rate limiting
  */
 export function withRateLimit<T extends NextRequest>(
   limiterKey: RateLimiterKey,
   handler: (req: T) => Promise<NextResponse>,
+  identifierFn: (req: Request) => string = getClientIdentifier,
 ): (req: T) => Promise<NextResponse> {
   const limiter = rateLimiters[limiterKey];
 
   return async (req: T): Promise<NextResponse> => {
-    const identifier = getClientIdentifier(req);
+    const identifier = identifierFn(req);
 
     try {
       const result = await limiter.consume(identifier);

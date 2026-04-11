@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withApiKey } from "@/lib/auth/apiKey";
 import { withRateLimit } from "@/lib/middleware/rateLimit";
+import { getClientIdentifierWithUser } from "@/lib/rateLimit";
 
 /**
  * Get subscription status for a user
@@ -72,5 +73,9 @@ const statusHandler = withApiKey(async (request: NextRequest) => {
   });
 });
 
-// Rate limited: 60 requests per minute (for polling)
-export const GET = withRateLimit("status", statusHandler);
+// Rate limited: 60 requests per minute PER USER (not shared across all users)
+export const GET = withRateLimit(
+  "status",
+  statusHandler,
+  getClientIdentifierWithUser,
+);
