@@ -25,27 +25,23 @@ const statusHandler = withApiKey(async (request: NextRequest) => {
     );
   }
 
-  // Verify the app exists
-  const app = await prisma.app.findUnique({
-    where: { id: appId },
-    select: { id: true },
-  });
-
-  if (!app) {
-    return NextResponse.json({ error: "App not found" }, { status: 404 });
-  }
-
+  // Single query: fetch customer + subscription + verify app exists via relation
   const billingCustomer = await prisma.billingCustomer.findUnique({
     where: {
       appId_externalUserId: { appId, externalUserId },
     },
     include: {
+      app: { select: { id: true } },
       subscriptions: {
         orderBy: { updatedAt: "desc" },
         take: 1,
       },
     },
   });
+
+  if (billingCustomer && !billingCustomer.app) {
+    return NextResponse.json({ error: "App not found" }, { status: 404 });
+  }
 
   // No subscription found
   if (!billingCustomer || billingCustomer.subscriptions.length === 0) {

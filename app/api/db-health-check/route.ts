@@ -1,8 +1,15 @@
 import { logError } from "@/app/middleware/logger";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
+import { env } from "@/env";
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Require cron secret to prevent public access
+  const secret = request.headers.get("x-cron-secret");
+  if (!env.CRON_SECRET || secret !== env.CRON_SECRET) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     await prisma.$queryRaw`SELECT 1`;
     return NextResponse.json({
@@ -19,7 +26,8 @@ export async function GET(request: Request) {
       },
       { status: 500 },
     );
-  } finally {
-    await prisma.$disconnect();
+    // NOTE: Do NOT call prisma.$disconnect() here — it closes the shared
+    // connection pool for the entire Cloud Run instance, breaking all
+    // subsequent requests until the pool is re-established.
   }
 }

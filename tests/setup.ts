@@ -23,6 +23,7 @@ vi.mock("@/env", () => ({
     STRIPE_BASIC_PRICE_ID: "price_test_basic",
     STRIPE_FREE_PRODUCT_ID: "prod_test_free",
     STRIPE_BASIC_PRODUCT_ID: "prod_test_basic",
+    BILLING_APP_URL: "http://localhost:3000",
   },
 }));
 
