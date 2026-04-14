@@ -4,9 +4,7 @@ A centralized billing service that handles Stripe subscriptions for multiple Saa
 
 > ⚠️ **Disclaimer: Not Production Ready**
 >
-> This software is currently in active development and is **not ready for production use**. The following features are still pending:
->
-> - **Email notifications** - No email flow for subscription events (welcome, payment failed, cancellation, etc.)
+> This software is currently in active development and is **not ready for production use**.
 
 ## Overview
 
@@ -17,6 +15,7 @@ This billing app allows you to:
 - Provide a unified billing portal UI for end users
 - Let SaaS backends check subscription status via API
 - **Each SaaS app configures its own pricing plans** - no hardcoded global prices
+- **Each SaaS app owns its own email sending** - per-app Resend API key and sending domain
 
 ## Architecture
 
@@ -88,37 +87,43 @@ Used automatically when users navigate to the billing portal through your app.
 
 ### Step 1: Register Your SaaS App with Pricing Plans
 
-First, create a pricing configuration file for your app:
+Create a pricing configuration file for your app. The **object format** is recommended — it lets you include your app's Resend email credentials alongside the plan definitions:
 
 ```json
 // plans.json
-[
-  {
-    "planKey": "free_trial",
-    "name": "Free Trial",
-    "description": "Try it free for 14 days",
-    "price": 0,
-    "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_FREE_PRICE_ID"
-  },
-  {
-    "planKey": "basic",
-    "name": "Basic",
-    "description": "For individuals and small teams",
-    "price": 1000,
-    "stripeProductId": "prod_YOUR_BASIC_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_BASIC_PRICE_ID"
-  },
-  {
-    "planKey": "pro",
-    "name": "Pro",
-    "description": "For businesses and power users",
-    "price": 3000,
-    "stripeProductId": "prod_YOUR_PRO_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_PRO_PRICE_ID"
-  }
-]
+{
+  "resendApiKey": "re_live_YOUR_RESEND_API_KEY",
+  "fromEmail": "billing@yourapp.com",
+  "plans": [
+    {
+      "planKey": "free_trial",
+      "name": "Free Trial",
+      "description": "Try it free for 14 days",
+      "price": 0,
+      "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
+      "stripePriceId": "price_YOUR_FREE_PRICE_ID"
+    },
+    {
+      "planKey": "basic",
+      "name": "Basic",
+      "description": "For individuals and small teams",
+      "price": 1000,
+      "stripeProductId": "prod_YOUR_BASIC_PRODUCT_ID",
+      "stripePriceId": "price_YOUR_BASIC_PRICE_ID"
+    },
+    {
+      "planKey": "pro",
+      "name": "Pro",
+      "description": "For businesses and power users",
+      "price": 3000,
+      "stripeProductId": "prod_YOUR_PRO_PRODUCT_ID",
+      "stripePriceId": "price_YOUR_PRO_PRICE_ID"
+    }
+  ]
+}
 ```
+
+> **Legacy format:** A plain JSON array of plans (without email fields) is still supported for backward compatibility.
 
 Then register your app with its pricing:
 
@@ -129,13 +134,15 @@ npx tsx scripts/create-app.ts <app-id> "<app-name>" <plans.json>
 npx tsx scripts/create-app.ts saas-a "My Todo App" ./plans.json
 ```
 
+**Re-running the script on an existing app** will update only the email credentials (`resendApiKey`, `fromEmail`). The API key and plans are left untouched.
+
 To add or update plans for an existing app:
 
 ```bash
 npx tsx scripts/add-plans.ts <app-id> <plans.json>
 ```
 
-Save the API key securely - it won't be shown again.
+Save the API key securely — it won't be shown again.
 
 ### Step 2: Set Up Environment Variables in Your SaaS App
 
@@ -260,16 +267,56 @@ export async function checkPremiumAccess(userId: string) {
 
 ## Environment Variables
 
-| Variable                | Description                                 |
-| ----------------------- | ------------------------------------------- |
-| `DATABASE_URL`          | PostgreSQL connection string                |
-| `SAAS_JWT_SECRET`       | Shared secret for JWT signing/verification  |
-| `STRIPE_SECRET_KEY`     | Stripe API secret key                       |
-| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret               |
-| `STRIPE_PK_KEY`         | Stripe publishable key                      |
-| `CRON_SECRET`           | Secret for authenticating cron job requests |
+| Variable                | Required | Description                                                          |
+| ----------------------- | -------- | -------------------------------------------------------------------- |
+| `DATABASE_URL`          | ✅       | PostgreSQL connection string                                         |
+| `SAAS_JWT_SECRET`       | ✅       | Shared secret for JWT signing/verification                           |
+| `STRIPE_SECRET_KEY`     | ✅       | Stripe API secret key                                                |
+| `STRIPE_WEBHOOK_SECRET` | ✅       | Stripe webhook signing secret                                        |
+| `STRIPE_PK_KEY`         | ✅       | Stripe publishable key                                               |
+| `CRON_SECRET`           | ✅       | Secret for authenticating cron job requests                          |
+| `RESEND_API_KEY`        | Optional | Global fallback Resend key (used when an app has no per-app key set) |
 
 > **Note:** Stripe price/product IDs are no longer environment variables. Each SaaS app registers its own pricing plans using the `create-app.ts` or `add-plans.ts` scripts.
+>
+> **Note:** Each registered app can store its own `resendApiKey` and `fromEmail` in the database (set via `create-app.ts` or the `register-app.yml` CI workflow). These take precedence over the global `RESEND_API_KEY` fallback.
+
+## Email Notifications
+
+This app sends transactional emails via [Resend](https://resend.com). Email ownership is **per SaaS app** — each registered app can use its own Resend API key and sending domain so that emails appear to come from the SaaS product, not from the billing portal.
+
+### How it works
+
+1. When a Stripe webhook fires (e.g. `checkout.session.completed`), the webhook handler looks up the app in the database.
+2. If the app has a `resendApiKey` and `fromEmail` stored, those are used for the email send.
+3. If not, the handler falls back to the global `RESEND_API_KEY` environment variable.
+4. If neither is available, the email send is skipped gracefully.
+
+### Registering email credentials for an app
+
+Email credentials are stored alongside the app record. Pass them when running `create-app.ts`:
+
+```bash
+# plans.json must use the object format (see Step 1)
+npx tsx scripts/create-app.ts saas-a "My Todo App" ./plans.json
+```
+
+Or inject them at deploy time via the **`register-app.yml`** GitHub Actions workflow:
+
+```
+Workflow inputs:
+  app_id          — registered app ID
+  app_name        — display name
+  plans_file      — path to plans JSON (array format is fine; credentials injected at runtime)
+  resend_api_key  — re_live_... key from your Resend dashboard (masked in logs)
+  from_email      — sending address, e.g. billing@yourapp.com
+```
+
+Re-running the workflow on an existing app only patches the email credentials; the API key and plans are preserved.
+
+### From address
+
+The `fromEmail` must be an address on a domain you have verified in Resend (DNS records added to the domain). It is independent of your GCP routing — Resend delivers the email directly via its own infrastructure.
 
 ## Development
 
