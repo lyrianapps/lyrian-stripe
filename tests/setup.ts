@@ -1,4 +1,8 @@
 import { beforeAll, afterAll, afterEach, vi } from "vitest";
+import { config } from "dotenv";
+
+// Load .env.test before anything else
+config({ path: ".env.test" });
 
 // Set TEST_DATABASE_URL before importing prisma
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
