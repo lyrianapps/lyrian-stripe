@@ -41,6 +41,11 @@ model App {
   name   String
   apiKey String? @unique
 
+  // Per-app email config — each SaaS product owns its own Resend key + sending domain.
+  // Falls back to global RESEND_API_KEY / FROM_EMAIL env vars when not set.
+  resendApiKey String? // re_live_xxxx
+  fromEmail    String? // e.g. "billing@yourapp.com"
+
   customers BillingCustomer[]
   plans     AppPlan[]
 }

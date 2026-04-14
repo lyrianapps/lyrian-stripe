@@ -47,6 +47,24 @@ const PlanInputSchema = z.object({
   sortOrder: z.number().int().default(0),
 });
 
+/**
+ * App config schema — supports two formats:
+ *
+ * 1. Simple array (legacy):    [ { planKey: "basic", ... }, ... ]
+ * 2. Object with email config: { resendApiKey: "re_live_...", fromEmail: "billing@yourapp.com", plans: [...] }
+ *
+ * The email fields are optional and let each SaaS app send emails from its own
+ * domain instead of the billing portal's global FROM_EMAIL / RESEND_API_KEY.
+ */
+const AppConfigSchema = z.union([
+  z.array(PlanInputSchema),
+  z.object({
+    resendApiKey: z.string().startsWith("re_").optional(),
+    fromEmail: z.string().email().optional(),
+    plans: z.array(PlanInputSchema),
+  }),
+]);
+
 type PlanInput = z.infer<typeof PlanInputSchema>;
 
 async function main() {
@@ -119,8 +137,10 @@ async function main() {
   });
 
   if (existingApp?.apiKey) {
-    console.log(`\n⚠️  App "${appId}" already has an API key:`);
-    console.log(`   ${existingApp.apiKey}`);
+    console.log(
+      `\n⚠️  App "${appId}" already registered — running in update mode.`,
+    );
+    console.log(`   API Key: (unchanged)`);
 
     if (existingApp.plans.length > 0) {
       console.log(`\n   Existing plans:`);
@@ -131,23 +151,32 @@ async function main() {
       });
     }
     console.log();
-    process.exit(0);
+    // Fall through — parse the config file and upsert email credentials
   }
 
-  const apiKey = generateApiKey();
+  const isUpdate = Boolean(existingApp?.apiKey);
+  const apiKey = isUpdate ? existingApp!.apiKey! : generateApiKey();
 
-  // Parse plans
+  // Parse app config (supports legacy array format OR new object format)
   let plans: PlanInput[] = [];
+  let resendApiKey: string | undefined;
+  let fromEmail: string | undefined;
   try {
-    const plansJson = JSON.parse(readFileSync(plansFile, "utf-8"));
-    const parsed = z.array(PlanInputSchema).safeParse(plansJson);
+    const rawJson = JSON.parse(readFileSync(plansFile, "utf-8"));
+    const parsed = AppConfigSchema.safeParse(rawJson);
     if (!parsed.success) {
-      console.error("❌ Invalid plans JSON:", parsed.error.flatten());
+      console.error("❌ Invalid app config JSON:", parsed.error.flatten());
       process.exit(1);
     }
-    plans = parsed.data;
+    if (Array.isArray(parsed.data)) {
+      plans = parsed.data;
+    } else {
+      plans = parsed.data.plans;
+      resendApiKey = parsed.data.resendApiKey;
+      fromEmail = parsed.data.fromEmail;
+    }
   } catch (err) {
-    console.error(`❌ Failed to read plans file: ${plansFile}`);
+    console.error(`❌ Failed to read app config file: ${plansFile}`);
     console.error(err);
     process.exit(1);
   }
@@ -172,19 +201,22 @@ async function main() {
     process.exit(1);
   }
 
-  // Create app with plans in a transaction
+  // Create/update app with plans in a transaction
   await prisma.$transaction(async (tx) => {
     await tx.app.upsert({
       where: { id: appId },
-      update: { apiKey },
+      // On update: only patch email credentials — never overwrite the API key or plans
+      update: { resendApiKey, fromEmail },
       create: {
         id: appId,
         name: appName,
         apiKey,
+        resendApiKey,
+        fromEmail,
       },
     });
 
-    if (plans.length > 0) {
+    if (plans.length > 0 && !isUpdate) {
       await tx.appPlan.createMany({
         data: plans.map((plan, index) => ({
           appId,
@@ -201,21 +233,38 @@ async function main() {
     }
   });
 
-  console.log(`
+  if (isUpdate) {
+    console.log(`
+✅ App updated successfully!
+
+   App ID:     ${appId}
+   API Key:    (unchanged)
+   From Email: ${fromEmail || "(uses billing portal default)"}
+   Resend Key: ${resendApiKey ? "set" : "(uses billing portal default)"}
+`);
+  } else {
+    console.log(`
 ✅ App created successfully!
 
    App ID:   ${appId}
    Name:     ${appName}
-   API Key:  ${apiKey}
+   API Key:  ${apiKey}${resendApiKey ? `\n   From Email: ${fromEmail || "(uses billing portal default)"}` : ""}
 
    Plans configured:`);
-  plans.forEach((p) => {
-    console.log(
-      `   - ${p.planKey}: ${p.name} ($${(p.price / 100).toFixed(2)}/month)`,
-    );
-  });
+    plans.forEach((p) => {
+      console.log(
+        `   - ${p.planKey}: ${p.name} ($${(p.price / 100).toFixed(2)}/month)`,
+      );
+    });
 
-  console.log(`
+    if (!resendApiKey) {
+      console.log(`
+⚠️  No resendApiKey configured — emails will use the billing portal's global
+   RESEND_API_KEY / FROM_EMAIL env vars. To send from your own domain, add
+   resendApiKey and fromEmail to your app config JSON.`);
+    }
+
+    console.log(`
 Save this API key securely - it won't be shown again.
 
 Usage in your SaaS app:
@@ -223,6 +272,7 @@ Usage in your SaaS app:
    curl -X GET "https://your-billing-app.com/api/subscription/status?appId=${appId}&externalUserId=user-123" \\
      -H "x-api-key: ${apiKey}"
 `);
+  }
 }
 
 main()

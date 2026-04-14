@@ -50,6 +50,8 @@ export interface CheckoutPipelineData {
   // Email context
   customerEmail?: string | null;
   appName?: string;
+  appResendApiKey?: string | null;
+  appFromEmail?: string | null;
   planName?: string;
   planAmount?: number | null;
   planCurrency?: string | null;

@@ -2,20 +2,36 @@ import { Resend } from "resend";
 import { logger } from "@/app/middleware/logger";
 import { env } from "@/env";
 
-// Lazy initialization - only create client when needed
-let resendClient: Resend | null = null;
+// Lazy initialization for the global (fallback) client
+let globalResendClient: Resend | null = null;
 
-function getResendClient(): Resend | null {
+function getResendClient(apiKey?: string | null): Resend | null {
+  // Use per-app key if supplied
+  if (apiKey) {
+    return new Resend(apiKey);
+  }
+  // Fall back to global env key
   if (!env.RESEND_API_KEY) {
     return null;
   }
-  if (!resendClient) {
-    resendClient = new Resend(env.RESEND_API_KEY);
+  if (!globalResendClient) {
+    globalResendClient = new Resend(env.RESEND_API_KEY);
   }
-  return resendClient;
+  return globalResendClient;
 }
 
-const FROM_EMAIL = env.FROM_EMAIL || "billing@yourdomain.com";
+const FALLBACK_FROM_EMAIL = env.FROM_EMAIL || "billing@yourdomain.com";
+
+/**
+ * Per-app email credentials.
+ * Each SaaS product can register its own Resend API key and sending domain
+ * so emails come from their domain (e.g. "billing@theirapp.com").
+ * When not provided, falls back to the global RESEND_API_KEY / FROM_EMAIL env vars.
+ */
+export interface AppEmailCredentials {
+  resendApiKey?: string | null;
+  fromEmail?: string | null;
+}
 
 export type EmailEventType =
   | "subscription_created"
@@ -35,17 +51,21 @@ export interface EmailContext {
 }
 
 /**
- * Send subscription-related email notifications
- * Fails silently if RESEND_API_KEY is not configured
+ * Send subscription-related email notifications.
+ *
+ * Pass `credentials` to use a SaaS app's own Resend key + from-address.
+ * Falls back to global RESEND_API_KEY / FROM_EMAIL env vars when omitted.
+ * Fails silently if no Resend key is configured.
  */
 export async function sendSubscriptionEmail(
   eventType: EmailEventType,
   context: EmailContext,
+  credentials?: AppEmailCredentials,
 ): Promise<boolean> {
-  const client = getResendClient();
+  const client = getResendClient(credentials?.resendApiKey);
 
   if (!client) {
-    logger.info("[email] RESEND_API_KEY not configured, skipping email");
+    logger.info("[email] No Resend API key configured, skipping email");
     return false;
   }
 
@@ -54,11 +74,12 @@ export async function sendSubscriptionEmail(
     return false;
   }
 
+  const fromAddress = credentials?.fromEmail || FALLBACK_FROM_EMAIL;
   const { subject, html } = getEmailContent(eventType, context);
 
   try {
     const result = await client.emails.send({
-      from: FROM_EMAIL,
+      from: fromAddress,
       to: context.to,
       subject,
       html,

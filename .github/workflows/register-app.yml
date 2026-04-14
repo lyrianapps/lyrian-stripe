@@ -22,6 +22,14 @@ on:
         description: 'Plans JSON filename in repo root (e.g., threads_app_plans_dev.json for staging, threads_app_plans_prod.json for production)'
         required: true
         type: string
+      resend_api_key:
+        description: 'Resend API key for this app (re_live_...). Leave blank to use the billing portal default.'
+        required: false
+        type: string
+      from_email:
+        description: 'Sending email address for this app (e.g., billing@yourapp.com). Leave blank to use the billing portal default.'
+        required: false
+        type: string
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -65,7 +73,14 @@ jobs:
         STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        APP_RESEND_API_KEY: ${{ inputs.resend_api_key }}
+        APP_FROM_EMAIL: ${{ inputs.from_email }}
       run: |
+        # Mask the API key immediately so it never appears in plain text in the logs
+        if [ -n "$APP_RESEND_API_KEY" ]; then
+          echo "::add-mask::$APP_RESEND_API_KEY"
+        fi
+
         ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
         sleep 5
 
@@ -73,8 +88,26 @@ jobs:
         echo "📝 Registering app: ${{ inputs.app_id }}"
         echo "📄 Using plans file: ${{ inputs.plans_file }}"
 
+        PLANS_FILE="./${{ inputs.plans_file }}"
+
+        # If email credentials were provided, wrap the plans array in the object format on the fly
+        if [ -n "$APP_RESEND_API_KEY" ] || [ -n "$APP_FROM_EMAIL" ]; then
+          echo "📧 Injecting email config..."
+          MERGED=$(node -e "
+            const fs = require('fs');
+            const raw = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+            const plans = Array.isArray(raw) ? raw : raw.plans;
+            const config = { plans };
+            if (process.env.APP_RESEND_API_KEY) config.resendApiKey = process.env.APP_RESEND_API_KEY;
+            if (process.env.APP_FROM_EMAIL)     config.fromEmail    = process.env.APP_FROM_EMAIL;
+            console.log(JSON.stringify(config));
+          " "$PLANS_FILE")
+          PLANS_FILE=$(mktemp /tmp/plans-XXXXXX.json)
+          echo "$MERGED" > "$PLANS_FILE"
+        fi
+
         # Run the create-app script
-        npx tsx scripts/create-app.ts "${{ inputs.app_id }}" "${{ inputs.app_name }}" "./${{ inputs.plans_file }}"
+        npx tsx scripts/create-app.ts "${{ inputs.app_id }}" "${{ inputs.app_name }}" "$PLANS_FILE"
 
         echo ""
         echo "⚠️  IMPORTANT: Copy the API key from the output above!"

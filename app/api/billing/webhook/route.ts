@@ -541,7 +541,7 @@ const checkoutSteps = {
 
     const app = await prisma.app.findUnique({
       where: { id: metadata!.appId },
-      select: { name: true },
+      select: { name: true, resendApiKey: true, fromEmail: true },
     });
 
     const appPlan = await prisma.appPlan.findFirst({
@@ -555,6 +555,8 @@ const checkoutSteps = {
         ...ctx.data,
         customerEmail: billingCustomer?.email,
         appName: app?.name || metadata!.appId,
+        appResendApiKey: app?.resendApiKey,
+        appFromEmail: app?.fromEmail,
         planName: appPlan?.name || ctx.data.plan || "Subscription",
         planAmount: appPlan?.price,
         planCurrency: appPlan?.currency,
@@ -565,17 +567,28 @@ const checkoutSteps = {
   sendWelcomeEmail: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
-    const { customerEmail, appName, planName, planAmount, planCurrency } =
-      ctx.data;
+    const {
+      customerEmail,
+      appName,
+      appResendApiKey,
+      appFromEmail,
+      planName,
+      planAmount,
+      planCurrency,
+    } = ctx.data;
 
     if (customerEmail) {
-      await sendSubscriptionEmail("subscription_created", {
-        to: customerEmail,
-        appName: appName || "App",
-        planName: planName || "Subscription",
-        amount: planAmount,
-        currency: planCurrency,
-      });
+      await sendSubscriptionEmail(
+        "subscription_created",
+        {
+          to: customerEmail,
+          appName: appName || "App",
+          planName: planName || "Subscription",
+          amount: planAmount,
+          currency: planCurrency,
+        },
+        { resendApiKey: appResendApiKey, fromEmail: appFromEmail },
+      );
     }
 
     return log(
