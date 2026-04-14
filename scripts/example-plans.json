@@ -1,33 +1,29 @@
-{
-  "resendApiKey": "re_live_YOUR_RESEND_API_KEY",
-  "fromEmail": "billing@yourapp.com",
-  "plans": [
-    {
-      "planKey": "free_trial",
-      "name": "Free Trial",
-      "description": "Try it free for 14 days",
-      "price": 0,
-      "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
-      "stripePriceId": "price_YOUR_FREE_PRICE_ID",
-      "sortOrder": 0
-    },
-    {
-      "planKey": "basic",
-      "name": "Basic",
-      "description": "For individuals and small teams",
-      "price": 1000,
-      "stripeProductId": "prod_YOUR_BASIC_PRODUCT_ID",
-      "stripePriceId": "price_YOUR_BASIC_PRICE_ID",
-      "sortOrder": 1
-    },
-    {
-      "planKey": "pro",
-      "name": "Pro",
-      "description": "For businesses and power users",
-      "price": 3000,
-      "stripeProductId": "prod_YOUR_PRO_PRODUCT_ID",
-      "stripePriceId": "price_YOUR_PRO_PRICE_ID",
-      "sortOrder": 2
-    }
-  ]
-}
+[
+  {
+    "planKey": "free_trial",
+    "name": "Free Trial",
+    "description": "Try it free for 14 days",
+    "price": 0,
+    "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
+    "stripePriceId": "price_YOUR_FREE_PRICE_ID",
+    "sortOrder": 0
+  },
+  {
+    "planKey": "basic",
+    "name": "Basic",
+    "description": "For individuals and small teams",
+    "price": 1000,
+    "stripeProductId": "prod_YOUR_BASIC_PRODUCT_ID",
+    "stripePriceId": "price_YOUR_BASIC_PRICE_ID",
+    "sortOrder": 1
+  },
+  {
+    "planKey": "pro",
+    "name": "Pro",
+    "description": "For businesses and power users",
+    "price": 3000,
+    "stripeProductId": "prod_YOUR_PRO_PRODUCT_ID",
+    "stripePriceId": "price_YOUR_PRO_PRICE_ID",
+    "sortOrder": 2
+  }
+]

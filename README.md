@@ -87,54 +87,58 @@ Used automatically when users navigate to the billing portal through your app.
 
 ### Step 1: Register Your SaaS App with Pricing Plans
 
-Create a pricing configuration file for your app. The **object format** is recommended — it lets you include your app's Resend email credentials alongside the plan definitions:
+Create a plans JSON file in the repo root containing only your Stripe product/price IDs. **Email credentials are never stored in the file** — they are injected at runtime via the CI workflow or CLI flags.
 
 ```json
-// plans.json
-{
-  "resendApiKey": "re_live_YOUR_RESEND_API_KEY",
-  "fromEmail": "billing@yourapp.com",
-  "plans": [
-    {
-      "planKey": "free_trial",
-      "name": "Free Trial",
-      "description": "Try it free for 14 days",
-      "price": 0,
-      "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
-      "stripePriceId": "price_YOUR_FREE_PRICE_ID"
-    },
-    {
-      "planKey": "basic",
-      "name": "Basic",
-      "description": "For individuals and small teams",
-      "price": 1000,
-      "stripeProductId": "prod_YOUR_BASIC_PRODUCT_ID",
-      "stripePriceId": "price_YOUR_BASIC_PRICE_ID"
-    },
-    {
-      "planKey": "pro",
-      "name": "Pro",
-      "description": "For businesses and power users",
-      "price": 3000,
-      "stripeProductId": "prod_YOUR_PRO_PRODUCT_ID",
-      "stripePriceId": "price_YOUR_PRO_PRICE_ID"
-    }
-  ]
-}
+// my-app-plans.json
+[
+  {
+    "planKey": "free_trial",
+    "name": "Free Trial",
+    "description": "Try it free for 14 days",
+    "price": 0,
+    "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
+    "stripePriceId": "price_YOUR_FREE_PRICE_ID"
+  },
+  {
+    "planKey": "basic",
+    "name": "Basic",
+    "description": "For individuals and small teams",
+    "price": 1000,
+    "stripeProductId": "prod_YOUR_BASIC_PRODUCT_ID",
+    "stripePriceId": "price_YOUR_BASIC_PRICE_ID"
+  },
+  {
+    "planKey": "pro",
+    "name": "Pro",
+    "description": "For businesses and power users",
+    "price": 3000,
+    "stripeProductId": "prod_YOUR_PRO_PRODUCT_ID",
+    "stripePriceId": "price_YOUR_PRO_PRICE_ID"
+  }
+]
 ```
 
-> **Legacy format:** A plain JSON array of plans (without email fields) is still supported for backward compatibility.
+See `scripts/example-plans.json` for a ready-to-copy template.
 
-Then register your app with its pricing:
+Then trigger the **`register-app.yml`** GitHub Actions workflow, providing:
+
+- `plans_file` — the filename above (e.g. `my-app-plans.json`)
+- `resend_api_key` — your Resend `re_live_...` key (masked in logs, never committed)
+- `from_email` — e.g. `billing@yourapp.com`
+
+The workflow registers the app, injects the email credentials into the DB at runtime, then **automatically deletes the plans file from the repo** via a follow-up commit — so no Stripe IDs linger in git history after registration.
+
+To register locally instead:
 
 ```bash
 npx tsx scripts/create-app.ts <app-id> "<app-name>" <plans.json>
 
 # Example:
-npx tsx scripts/create-app.ts saas-a "My Todo App" ./plans.json
+npx tsx scripts/create-app.ts saas-a "My Todo App" ./my-app-plans.json
 ```
 
-**Re-running the script on an existing app** will update only the email credentials (`resendApiKey`, `fromEmail`). The API key and plans are left untouched.
+**Re-running the script on an existing app** will update only the email credentials. The API key and plans are left untouched.
 
 To add or update plans for an existing app:
 
@@ -294,25 +298,21 @@ This app sends transactional emails via [Resend](https://resend.com). Email owne
 
 ### Registering email credentials for an app
 
-Email credentials are stored alongside the app record. Pass them when running `create-app.ts`:
+Email credentials are always injected at runtime — they are never stored in the plans JSON file.
+
+**Via CI (recommended):** trigger `register-app.yml` and fill in `resend_api_key` and `from_email` as workflow inputs. They are masked in logs and written directly to the database.
+
+**Locally:**
 
 ```bash
-# plans.json must use the object format (see Step 1)
 npx tsx scripts/create-app.ts saas-a "My Todo App" ./plans.json
+# The script reads RESEND_API_KEY / FROM_EMAIL from .env if set,
+# or you can pass them inside an object-format JSON for a one-off run:
+npx tsx scripts/create-app.ts saas-a "My Todo App" \
+  '{"resendApiKey":"re_live_...","fromEmail":"billing@yourapp.com","plans":[...]}'
 ```
 
-Or inject them at deploy time via the **`register-app.yml`** GitHub Actions workflow:
-
-```
-Workflow inputs:
-  app_id          — registered app ID
-  app_name        — display name
-  plans_file      — path to plans JSON (array format is fine; credentials injected at runtime)
-  resend_api_key  — re_live_... key from your Resend dashboard (masked in logs)
-  from_email      — sending address, e.g. billing@yourapp.com
-```
-
-Re-running the workflow on an existing app only patches the email credentials; the API key and plans are preserved.
+Re-running either method on an existing app only patches the email credentials; the API key and plans are preserved.
 
 ### From address
 
