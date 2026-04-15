@@ -10,10 +10,7 @@ const envSchema = z.object({
   // App URL
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
 
-  BILLING_APP_URL: z
-    .string()
-    .url()
-    .default("https://lyrian-stripe-494926016713.us-central1.run.app"),
+  BILLING_APP_URL: z.string().url().default("http://localhost:3000"),
 
   // Cron Jobs (Cloud Scheduler)
   CRON_SECRET: z.string().min(16).optional(),
