@@ -145,8 +145,11 @@ export const rateLimiters = {
   // Portal - session creation: 20 req/min
   portal: createRateLimiter("portal", 20, 60),
 
-  // Status checks - more lenient for polling: 60 req/min
-  status: createRateLimiter("status", 60, 60),
+  // Status checks - server-to-server, keyed per user; 300 req/min gives
+  // each user (or the whole app when externalUserId is absent) ~5 req/sec
+  // of headroom. The Threads App should also cache responses for 30-60s
+  // on its side to avoid needless calls.
+  status: createRateLimiter("status", 300, 60),
 
   // Webhooks - Stripe may retry, be generous: 100 req/min
   webhook: createRateLimiter("webhook", 100, 60),
