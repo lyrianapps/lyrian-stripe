@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { CreditCard } from "lucide-react";
+import { CreditCard, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 import { Heading } from "@/app/components/Heading";
 import { Paragraph } from "@/app/components/Paragraph";
@@ -94,6 +95,16 @@ export default async function SubscriptionPage({
 
   return (
     <div className="max-w-xl mx-auto py-12 px-4">
+      {returnUrl && (
+        <Link
+          href={returnUrl}
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-6 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Link>
+      )}
+
       <Heading level={1} className="mb-6 flex items-center gap-2">
         <CreditCard className="w-7 h-7 text-blue-600" /> Subscription
       </Heading>
