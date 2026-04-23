@@ -142,8 +142,8 @@ export const rateLimiters = {
   // Cancel - sensitive operation: 5 req/min
   cancel: createRateLimiter("cancel", 5, 60),
 
-  // Portal - session creation: 20 req/min
-  portal: createRateLimiter("portal", 20, 60),
+  // Portal - session creation: 60 req/min (keyed per-user via JWT sub)
+  portal: createRateLimiter("portal", 60, 60),
 
   // Status checks - server-to-server, keyed per user; 300 req/min gives
   // each user (or the whole app when externalUserId is absent) ~5 req/sec
@@ -186,6 +186,35 @@ export function getClientIdentifier(request: Request): string {
 
   // Fallback
   return `unknown:${Date.now()}`;
+}
+
+/**
+ * Extract client identifier for the portal endpoint.
+ * Peeks at the JWT `token` query param and uses its `sub` claim as the key
+ * so each individual user gets their own rate-limit bucket instead of
+ * everyone from the same IP sharing one.
+ */
+export function getPortalIdentifier(request: Request): string {
+  try {
+    const url = new URL((request as { url: string }).url);
+    const token = url.searchParams.get("token");
+    if (token) {
+      // Decode without verifying — verification happens in the handler.
+      // We only need the sub claim to form a stable per-user key.
+      const [, payloadB64] = token.split(".");
+      if (payloadB64) {
+        const payload = JSON.parse(
+          Buffer.from(payloadB64, "base64url").toString("utf8"),
+        ) as { sub?: string; iss?: string };
+        if (payload.sub && payload.iss) {
+          return `portal:${hashString(payload.iss)}:${hashString(payload.sub)}`;
+        }
+      }
+    }
+  } catch {
+    // Fall through to IP-based identifier
+  }
+  return getClientIdentifier(request);
 }
 
 /**

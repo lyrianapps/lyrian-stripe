@@ -80,9 +80,10 @@ export function withRateLimit<T extends NextRequest>(
 export async function checkRateLimit(
   request: Request,
   limiterKey: RateLimiterKey,
+  identifierFn: (req: Request) => string = getClientIdentifier,
 ): Promise<{ allowed: boolean; retryAfter?: number; headers: HeadersInit }> {
   const limiter = rateLimiters[limiterKey];
-  const identifier = getClientIdentifier(request);
+  const identifier = identifierFn(request);
 
   try {
     const result = await limiter.consume(identifier);

@@ -2,6 +2,7 @@ import { logError } from "@/app/middleware/logger";
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, verifyJWT } from "@/lib/session";
 import { checkRateLimit } from "@/lib/middleware/rateLimit";
+import { getPortalIdentifier } from "@/lib/rateLimit";
 
 export async function GET(req: NextRequest) {
   // ✅ Always use explicit base URL (Cloud Run safe)
@@ -11,8 +12,12 @@ export async function GET(req: NextRequest) {
     throw new Error("BILLING_APP_URL is not configured");
   }
 
-  // Rate limit check: 20 requests per minute
-  const rateLimitResult = await checkRateLimit(req, "portal");
+  // Rate limit check: 60 requests per minute, keyed per user via JWT sub
+  const rateLimitResult = await checkRateLimit(
+    req,
+    "portal",
+    getPortalIdentifier,
+  );
   if (!rateLimitResult.allowed) {
     const response = NextResponse.redirect(`${origin}/unauthorized`);
     Object.entries(rateLimitResult.headers).forEach(([key, value]) => {
