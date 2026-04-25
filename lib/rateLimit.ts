@@ -56,31 +56,29 @@ class SafeRateLimiter {
     try {
       return await this.limiter.consume(key, pointsToConsume);
     } catch (error) {
-      // If this is an initialization error (table not ready), allow the request
-      if (!isInitialized && isInitializationError(error)) {
-        console.warn(
-          `[RateLimit] ${this.keyPrefix}: Allowing request during initialization`,
-        );
-        return { remainingPoints: this.points - 1, msBeforeNext: 60000 };
+      // A genuine rate-limit rejection from rate-limiter-flexible always has
+      // both msBeforeNext and remainingPoints on the thrown object.
+      // Anything else (DB connection failure, table not ready, idle pool
+      // reconnect error, etc.) is an infrastructure problem — fail open so
+      // users aren't blocked by a transient backend issue.
+      if (
+        error &&
+        typeof error === "object" &&
+        "msBeforeNext" in error &&
+        "remainingPoints" in error
+      ) {
+        // Legitimate rate-limit — let the middleware return 429
+        throw error;
       }
-      // Otherwise, it's a legitimate rate limit rejection
-      throw error;
+
+      // Infrastructure error — log and allow the request through
+      console.warn(
+        `[RateLimit] ${this.keyPrefix}: Infrastructure error (fail-open), allowing request through`,
+        error,
+      );
+      return { remainingPoints: this.points - 1, msBeforeNext: 60000 };
     }
   }
-}
-
-/**
- * Check if an error is related to rate limiter initialization
- */
-function isInitializationError(error: unknown): boolean {
-  if (error && typeof error === "object") {
-    // RateLimiterPostgres throws with msBeforeNext when rate limited
-    // Initialization errors won't have this property or will have different error structure
-    const hasRateLimitProps =
-      "msBeforeNext" in error && "remainingPoints" in error;
-    return !hasRateLimitProps;
-  }
-  return true;
 }
 
 // Initialize the Postgres rate limiter table on startup
