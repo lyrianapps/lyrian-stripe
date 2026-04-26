@@ -7,6 +7,7 @@ import { env } from "@/env";
 import { getKnownErrorResponse } from "@/lib/utils/errorHandlers";
 import { z } from "zod";
 import { withRateLimit } from "@/lib/middleware/rateLimit";
+import { sendSubscriptionEmail } from "@/lib/email";
 
 const CancelRequestSchema = z.object({
   appId: z.string().min(1),
@@ -80,9 +81,10 @@ const cancelHandler = withApiKey(async (req: NextRequest) => {
   const { appId, externalUserId, cancelImmediately } = parsed.data;
 
   try {
-    // Find the billing customer
+    // Find the billing customer (include app for email credentials)
     const customer = await prisma.billingCustomer.findUnique({
       where: { appId_externalUserId: { appId, externalUserId } },
+      include: { app: true },
     });
 
     if (!customer) {
@@ -126,6 +128,21 @@ const cancelHandler = withApiKey(async (req: NextRequest) => {
         },
       });
 
+      if (customer.email) {
+        await sendSubscriptionEmail(
+          "subscription_canceled",
+          {
+            to: customer.email,
+            appName: customer.app.name,
+            planName: subscription.plan,
+          },
+          {
+            resendApiKey: customer.app.resendApiKey,
+            fromEmail: customer.app.fromEmail,
+          },
+        );
+      }
+
       return NextResponse.json({
         success: true,
         message: "Free trial canceled",
@@ -150,6 +167,21 @@ const cancelHandler = withApiKey(async (req: NextRequest) => {
         }),
       },
     });
+
+    if (customer.email) {
+      await sendSubscriptionEmail(
+        "subscription_canceled",
+        {
+          to: customer.email,
+          appName: customer.app.name,
+          planName: subscription.plan,
+        },
+        {
+          resendApiKey: customer.app.resendApiKey,
+          fromEmail: customer.app.fromEmail,
+        },
+      );
+    }
 
     return NextResponse.json({
       success: true,
