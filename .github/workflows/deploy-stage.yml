@@ -6,7 +6,7 @@ on:
 
 env:
   REGION: us-central1
-  SERVICE_NAME: lyrian-stripe
+  SERVICE_NAME: lyrian-stripe-stage
 
 jobs:
   test:
