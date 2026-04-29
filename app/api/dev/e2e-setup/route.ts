@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
       subscription = await prisma.subscription.create({
         data: {
           billingCustomerId: customer.id,
-          stripeSubscriptionId: `sub_test_${randomBytes(8).toString("hex")}`,
+          stripeSubscriptionId: `sub_e2e_${randomBytes(8).toString("hex")}`,
           stripePriceId: `price_test_${plan}`,
           stripeProductId: `prod_test_${plan}`,
           plan: plan as Plan,

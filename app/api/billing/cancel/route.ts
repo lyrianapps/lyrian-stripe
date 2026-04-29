@@ -101,15 +101,20 @@ const cancelHandler = withApiKey(async (req: NextRequest) => {
       );
     }
 
-    // Check if it's a real Stripe subscription (not a free_trial placeholder)
-    if (subscription.stripeSubscriptionId.startsWith("free_trial_")) {
-      // For free trial, just mark it as canceled locally
+    // Check if it's a real Stripe subscription (not a local-only placeholder).
+    // free_trial_ = free trial; sub_e2e_ = e2e test subscription seeded by /api/dev/e2e-setup.
+    const isLocalOnlySubscription =
+      subscription.stripeSubscriptionId.startsWith("free_trial_") ||
+      subscription.stripeSubscriptionId.startsWith("sub_e2e_");
+
+    if (isLocalOnlySubscription) {
+      // For local-only subscriptions, mirror the real cancel behavior in the DB only —
+      // cancel-at-period-end by default, immediate if requested.
       await prisma.subscription.update({
         where: { id: subscription.id },
-        data: {
-          status: "canceled",
-          accessEndsAt: new Date(),
-        },
+        data: cancelImmediately
+          ? { status: "canceled", accessEndsAt: new Date() }
+          : { cancelAtPeriodEnd: true },
       });
 
       await prisma.subscriptionEvent.create({
@@ -120,25 +125,13 @@ const cancelHandler = withApiKey(async (req: NextRequest) => {
         },
       });
 
-      if (customer.email) {
-        await sendSubscriptionEmail(
-          "subscription_canceled",
-          {
-            to: customer.email,
-            appName: customer.app.name,
-            planName: subscription.plan,
-          },
-          {
-            resendApiKey: customer.app.resendApiKey,
-            fromEmail: customer.app.fromEmail,
-          },
-        );
-      }
-
       return NextResponse.json({
         success: true,
-        message: "Free trial canceled",
-        canceledAt: new Date().toISOString(),
+        message: cancelImmediately
+          ? "Subscription canceled immediately"
+          : "Subscription will cancel at end of billing period",
+        cancelAtPeriodEnd: !cancelImmediately,
+        currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
       });
     }
 
