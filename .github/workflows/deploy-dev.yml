@@ -59,6 +59,25 @@ jobs:
         CRON_SECRET: ${{ secrets.CRON_SECRET }}
       run: npx vitest run
 
+    - name: Install Playwright browsers
+      run: npx playwright install --with-deps chromium
+
+    - name: Run E2E tests
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lyrian_billing_test
+        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
+        CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        NODE_ENV: development
+      run: npx playwright test
+
+    - name: Upload Playwright report
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-report-dev
+        path: playwright-report/
+        retention-days: 7
+
   build-and-deploy:
     runs-on: ubuntu-latest
     needs: test

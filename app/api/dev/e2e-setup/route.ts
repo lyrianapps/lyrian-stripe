@@ -62,6 +62,36 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Seed test AppPlan records so the subscription page renders plan cards.
+    // Uses upsert so re-running the fixture for the same appId is safe.
+    const testPlans = [
+      {
+        planKey: "basic",
+        name: "Basic",
+        description: "For individuals",
+        price: 1000, // $10/mo
+        stripeProductId: `prod_test_basic`,
+        stripePriceId: `price_test_basic`,
+        sortOrder: 1,
+      },
+      {
+        planKey: "pro",
+        name: "Pro",
+        description: "For teams",
+        price: 2900, // $29/mo
+        stripeProductId: `prod_test_pro`,
+        stripePriceId: `price_test_pro`,
+        sortOrder: 2,
+      },
+    ];
+    for (const plan of testPlans) {
+      await prisma.appPlan.upsert({
+        where: { appId_planKey: { appId, planKey: plan.planKey } },
+        update: {},
+        create: { appId, ...plan },
+      });
+    }
+
     // Create or get the billing customer
     let customer = await prisma.billingCustomer.findUnique({
       where: { appId_externalUserId: { appId, externalUserId } },
