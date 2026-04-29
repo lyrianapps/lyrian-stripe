@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { getStripeForApp } from "@/lib/stripe";
 import { withApiKey } from "@/lib/auth/apiKey";
 import { logError } from "@/app/middleware/logger";
-import { env } from "@/env";
 import { getKnownErrorResponse } from "@/lib/utils/errorHandlers";
 import { z } from "zod";
 import { withRateLimit } from "@/lib/middleware/rateLimit";
@@ -36,20 +35,13 @@ const CancelRequestSchema = z.object({
 async function cancelStripeSubscription(
   stripeSubscriptionId: string,
   cancelImmediately: boolean,
+  appStripeSecretKey?: string | null,
 ): Promise<void> {
-  // Guard: ensure we are not using a restricted key (rk_) which lacks
-  // subscription write permissions. Restricted keys are intended for limited
-  // access and cannot perform subscription mutations.
-  const key = env.STRIPE_SECRET_KEY;
-  if (!key || key.startsWith("rk_")) {
-    throw new Error(
-      "RESTRICTED_KEY: Stripe secret key is restricted or missing. Use a full secret key (sk_...) with subscription write permissions.",
-    );
-  }
+  const stripeInstance = getStripeForApp(appStripeSecretKey);
   if (cancelImmediately) {
-    await getStripeForApp().subscriptions.cancel(stripeSubscriptionId);
+    await stripeInstance.subscriptions.cancel(stripeSubscriptionId);
   } else {
-    await getStripeForApp().subscriptions.update(stripeSubscriptionId, {
+    await stripeInstance.subscriptions.update(stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
   }
@@ -154,6 +146,7 @@ const cancelHandler = withApiKey(async (req: NextRequest) => {
     await cancelStripeSubscription(
       subscription.stripeSubscriptionId,
       cancelImmediately,
+      customer.app.stripeSecretKey,
     );
 
     // Update local record (webhook will also update, but good to be immediate)

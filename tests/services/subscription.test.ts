@@ -11,15 +11,16 @@ import {
 } from "../helpers/factories";
 
 // Mock Stripe
+const mockRetrieve = vi.fn();
 vi.mock("@/lib/stripe", () => ({
-  stripe: {
+  getStripeForApp: vi.fn(() => ({
     subscriptions: {
-      retrieve: vi.fn(),
+      retrieve: mockRetrieve,
     },
-  },
+  })),
 }));
 
-import { stripe } from "@/lib/stripe";
+import { getStripeForApp } from "@/lib/stripe";
 
 describe("Subscription Service", () => {
   let testApp: Awaited<ReturnType<typeof createTestApp>>;
@@ -83,7 +84,7 @@ describe("Subscription Service", () => {
       });
 
       // Mock Stripe returning resource_missing error (what Stripe actually throws)
-      vi.mocked(stripe.subscriptions.retrieve).mockRejectedValue({
+      vi.mocked(mockRetrieve).mockRejectedValue({
         code: "resource_missing",
         type: "invalid_request_error",
       });
@@ -111,7 +112,7 @@ describe("Subscription Service", () => {
       });
 
       // Mock Stripe returning active subscription with items data
-      vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue({
+      vi.mocked(mockRetrieve).mockResolvedValue({
         id: subscription.stripeSubscriptionId,
         status: "active",
         cancel_at_period_end: false,
@@ -144,7 +145,7 @@ describe("Subscription Service", () => {
       });
 
       // Mock Stripe returning canceled subscription
-      vi.mocked(stripe.subscriptions.retrieve).mockResolvedValue({
+      vi.mocked(mockRetrieve).mockResolvedValue({
         id: subscription.stripeSubscriptionId,
         status: "canceled",
         cancel_at_period_end: false,

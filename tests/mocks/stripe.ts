@@ -75,4 +75,6 @@ export const mockStripe = createMockStripe();
 // Mock the stripe module
 vi.mock("@/lib/stripe", () => ({
   stripe: mockStripe,
+  getStripeForApp: vi.fn(() => mockStripe),
+  getWebhookSecretForApp: vi.fn(() => "whsec_test_mock_secret"),
 }));

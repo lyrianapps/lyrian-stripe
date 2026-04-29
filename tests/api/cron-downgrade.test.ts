@@ -15,14 +15,14 @@ import { createPostRequest } from "../helpers/request";
 
 // Mock Stripe before importing the route
 vi.mock("@/lib/stripe", () => ({
-  stripe: {
+  getStripeForApp: vi.fn(() => ({
     subscriptions: {
       retrieve: vi.fn().mockRejectedValue({
         code: "resource_missing",
         type: "invalid_request_error",
       }), // Simulate deleted subscription (Stripe's actual error format)
     },
-  },
+  })),
 }));
 
 describe("POST /api/cron/downgrade-expired", () => {

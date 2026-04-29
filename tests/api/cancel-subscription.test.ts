@@ -19,12 +19,12 @@ const mockStripeUpdate = vi.fn().mockResolvedValue({
 });
 
 vi.mock("@/lib/stripe", () => ({
-  stripe: {
+  getStripeForApp: vi.fn(() => ({
     subscriptions: {
       update: mockStripeUpdate,
       cancel: vi.fn().mockResolvedValue({ id: "sub_test", status: "canceled" }),
     },
-  },
+  })),
 }));
 
 describe("POST /api/billing/cancel", () => {
