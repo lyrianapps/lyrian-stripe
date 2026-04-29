@@ -126,7 +126,7 @@ jobs:
 
     - name: Run Prisma Migrations
       env:
-        DATABASE_URL: ${{ secrets.STAGE_DATABASE_URL }}
+        DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
       run: |
         ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
         sleep 5
