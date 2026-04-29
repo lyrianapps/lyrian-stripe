@@ -1,4 +1,5 @@
-import { stripe } from "@/lib/stripe";
+import Stripe from "stripe";
+import { getStripeForApp } from "@/lib/stripe";
 import { logger, logError } from "@/app/middleware/logger";
 import {
   downgradeSubscription,
@@ -55,7 +56,7 @@ export class StripeSubscriptionChecker implements SubscriptionChecker {
     subscription: SubscriptionCandidate,
   ): Promise<SubscriptionCheckResult> {
     try {
-      const stripeSubscription = await stripe.subscriptions.retrieve(
+      const stripeSubscription = await getStripeForApp().subscriptions.retrieve(
         subscription.stripeSubscriptionId,
       );
 
@@ -92,9 +93,7 @@ export class StripeSubscriptionChecker implements SubscriptionChecker {
 
   private async handleStripeStatus(
     subscription: SubscriptionCandidate,
-    stripeSubscription: Awaited<
-      ReturnType<typeof stripe.subscriptions.retrieve>
-    >,
+    stripeSubscription: Stripe.Subscription,
   ): Promise<SubscriptionCheckResult> {
     const { status } = stripeSubscription;
 
@@ -128,9 +127,7 @@ export class StripeSubscriptionChecker implements SubscriptionChecker {
 
   private async syncPeriodFromStripe(
     subscriptionId: string,
-    stripeSubscription: Awaited<
-      ReturnType<typeof stripe.subscriptions.retrieve>
-    >,
+    stripeSubscription: Stripe.Subscription,
   ) {
     const item = stripeSubscription.items.data[0];
     if (!item?.current_period_start || !item?.current_period_end) return;

@@ -161,6 +161,11 @@ async function main() {
   let plans: PlanInput[] = [];
   let resendApiKey: string | undefined;
   let fromEmail: string | undefined;
+  // Stripe credentials — read from env vars (injected by CI, never committed)
+  const stripeSecretKey = process.env.APP_STRIPE_SECRET_KEY || undefined;
+  const stripePublishableKey = process.env.APP_STRIPE_PK_KEY || undefined;
+  const stripeWebhookSecret =
+    process.env.APP_STRIPE_WEBHOOK_SECRET || undefined;
   try {
     const rawJson = JSON.parse(readFileSync(plansFile, "utf-8"));
     const parsed = AppConfigSchema.safeParse(rawJson);
@@ -205,14 +210,23 @@ async function main() {
   await prisma.$transaction(async (tx) => {
     await tx.app.upsert({
       where: { id: appId },
-      // On update: only patch email credentials — never overwrite the API key or plans
-      update: { resendApiKey, fromEmail },
+      // On update: only patch credentials — never overwrite the API key or plans
+      update: {
+        resendApiKey,
+        fromEmail,
+        stripeSecretKey,
+        stripePublishableKey,
+        stripeWebhookSecret,
+      },
       create: {
         id: appId,
         name: appName,
         apiKey,
         resendApiKey,
         fromEmail,
+        stripeSecretKey,
+        stripePublishableKey,
+        stripeWebhookSecret,
       },
     });
 
@@ -241,6 +255,8 @@ async function main() {
    API Key:    (unchanged)
    From Email: ${fromEmail || "(uses billing portal default)"}
    Resend Key: ${resendApiKey ? "set" : "(uses billing portal default)"}
+   Stripe Secret: ${stripeSecretKey ? "set" : "(uses billing portal default)"}
+   Stripe Webhook: ${stripeWebhookSecret ? "set" : "(uses billing portal default)"}
 `);
   } else {
     console.log(`

@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import Stripe from "stripe";
-import { stripe } from "@/lib/stripe";
+import { getStripeForApp, getWebhookSecretForApp } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { Plan, SubscriptionStatus } from "@/lib/generated/prisma/enums";
 import { logger, logError } from "@/app/middleware/logger";
-import { env } from "@/env";
 import { checkRateLimit } from "@/lib/middleware/rateLimit";
 import { sendSubscriptionEmail } from "@/lib/email";
 import {
@@ -19,8 +18,6 @@ import {
   InvoicePipelineData,
   WebhookHandler,
 } from "./types";
-
-const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
 
 const PLAN_HIERARCHY: readonly Plan[] = ["free_trial", "basic", "pro"] as const;
 
@@ -284,7 +281,7 @@ async function fetchBillingPeriodFromInvoice(
   invoiceId: string,
 ): Promise<BillingPeriod | null> {
   logger.info(`[data] Fetching billing period from invoice: ${invoiceId}`);
-  const invoice = await stripe.invoices.retrieve(invoiceId);
+  const invoice = await getStripeForApp().invoices.retrieve(invoiceId);
   const period = invoice.lines.data[0]?.period;
 
   if (!period) {
@@ -371,7 +368,7 @@ const checkoutSteps = {
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
     const { session } = ctx.data;
 
-    const stripeSubscription = await stripe.subscriptions.retrieve(
+    const stripeSubscription = await getStripeForApp().subscriptions.retrieve(
       session.subscription as string,
     );
 
@@ -1215,7 +1212,7 @@ async function handleInvoicePaymentSucceeded(
 // WEBHOOK HANDLER REGISTRY
 // =============================================================================
 
-const webhookHandlers: Record<string, WebhookHandler> = {
+export const webhookHandlers: Record<string, WebhookHandler> = {
   "checkout.session.completed": handleCheckoutSessionCompleted,
   "customer.subscription.updated": handleSubscriptionUpdated,
   "customer.subscription.deleted": handleSubscriptionDeleted,
@@ -1228,7 +1225,9 @@ const webhookHandlers: Record<string, WebhookHandler> = {
 // =============================================================================
 
 /** Checks if event was already processed to prevent duplicate handling */
-async function isEventAlreadyProcessed(eventId: string): Promise<boolean> {
+export async function isEventAlreadyProcessed(
+  eventId: string,
+): Promise<boolean> {
   const existingEvent = await prisma.stripeEvent.findUnique({
     where: { id: eventId },
   });
@@ -1236,7 +1235,7 @@ async function isEventAlreadyProcessed(eventId: string): Promise<boolean> {
 }
 
 /** Records incoming event in StripeEvent table for idempotency tracking */
-async function recordEventReceived(event: Stripe.Event): Promise<void> {
+export async function recordEventReceived(event: Stripe.Event): Promise<void> {
   await prisma.stripeEvent.upsert({
     where: { id: event.id },
     update: {},
@@ -1249,7 +1248,7 @@ async function recordEventReceived(event: Stripe.Event): Promise<void> {
 }
 
 /** Marks event as processed with timestamp after successful handling */
-async function markEventProcessed(eventId: string): Promise<void> {
+export async function markEventProcessed(eventId: string): Promise<void> {
   await prisma.stripeEvent.update({
     where: { id: eventId },
     data: { processedAt: new Date() },
@@ -1287,7 +1286,11 @@ export async function POST(req: NextRequest) {
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    event = getStripeForApp().webhooks.constructEvent(
+      body,
+      signature,
+      getWebhookSecretForApp(),
+    );
   } catch (err) {
     logError(err, "webhook/signature-verification");
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });

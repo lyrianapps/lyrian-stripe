@@ -46,6 +46,12 @@ model App {
   resendApiKey String? // re_live_xxxx
   fromEmail    String? // e.g. "billing@yourapp.com"
 
+  // Per-app Stripe credentials — each SaaS product owns its own Stripe account keys.
+  // Falls back to global STRIPE_SECRET_KEY / STRIPE_PK_KEY / STRIPE_WEBHOOK_SECRET env vars when not set.
+  stripeSecretKey      String? // sk_live_... or sk_test_...
+  stripePublishableKey String? // pk_live_... or pk_test_...
+  stripeWebhookSecret  String? // whsec_...
+
   customers BillingCustomer[]
   plans     AppPlan[]
 }

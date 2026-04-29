@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { stripe } from "@/lib/stripe";
+import { getStripeForApp } from "@/lib/stripe";
 import { getSession } from "@/lib/session";
 import { logError } from "@/app/middleware/logger";
 
@@ -60,10 +60,12 @@ export async function POST(req: NextRequest) {
     const defaultReturnUrl = `${origin}/subscription`;
 
     // Create Stripe Customer Portal session
-    const portalSession = await stripe.billingPortal.sessions.create({
-      customer: billingCustomer.stripeCustomerId,
-      return_url: returnUrl || defaultReturnUrl,
-    });
+    const portalSession = await getStripeForApp().billingPortal.sessions.create(
+      {
+        customer: billingCustomer.stripeCustomerId,
+        return_url: returnUrl || defaultReturnUrl,
+      },
+    );
 
     return NextResponse.json({ url: portalSession.url });
   } catch (err) {

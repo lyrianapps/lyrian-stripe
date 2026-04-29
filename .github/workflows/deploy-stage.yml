@@ -54,9 +54,6 @@ jobs:
         TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lyrian_billing_test
         SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
         CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-        STRIPE_PK_KEY: ${{ secrets.STRIPE_PK_KEY }}
-        STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
       run: yarn test
 
   build-and-deploy:
@@ -97,7 +94,7 @@ jobs:
           --min-instances=1 \
           --add-cloudsql-instances ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
           --set-env-vars "NODE_ENV=production,BILLING_APP_URL=${{ secrets.BILLING_APP_URL }}" \
-          --set-secrets "DATABASE_URL=STAGE_DATABASE_URL:latest,SAAS_JWT_SECRET=STAGE_SAAS_JWT_SECRET:latest,STRIPE_SECRET_KEY=STAGE_STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STAGE_STRIPE_WEBHOOK_SECRET:latest,STRIPE_PK_KEY=STAGE_STRIPE_PK_KEY:latest,CRON_SECRET=STAGE_CRON_SECRET:latest,RESEND_API_KEY=STAGE_RESEND_API_KEY:latest"
+          --set-secrets "DATABASE_URL=STAGE_DATABASE_URL:latest,SAAS_JWT_SECRET=STAGE_SAAS_JWT_SECRET:latest,CRON_SECRET=STAGE_CRON_SECRET:latest,RESEND_API_KEY=STAGE_RESEND_API_KEY:latest"
 
   migrate:
     runs-on: ubuntu-latest

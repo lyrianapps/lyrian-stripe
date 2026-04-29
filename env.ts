@@ -15,13 +15,14 @@ const envSchema = z.object({
   // Cron Jobs (Cloud Scheduler)
   CRON_SECRET: z.string().min(16).optional(),
 
-  // Stripe Keys
-  STRIPE_PK_KEY: z.string().startsWith("pk_"),
+  // Stripe Keys — optional fallbacks; apps may provide their own via DB
+  STRIPE_PK_KEY: z.string().startsWith("pk_").optional(),
   STRIPE_SECRET_KEY: z
     .string()
     .startsWith("rk_")
-    .or(z.string().startsWith("sk_")),
-  STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_"),
+    .or(z.string().startsWith("sk_"))
+    .optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_").optional(),
 
   // Email (Resend)
   RESEND_API_KEY: z.string().startsWith("re_").optional(),

@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment (dev or production)'
+        description: 'Environment (development or stage)'
         required: true
         type: choice
         options:
-        - dev
-        - production
+        - development
+        - stage
       app_id:
         description: 'App ID (e.g., threads_app)'
         required: true
@@ -28,6 +28,18 @@ on:
         type: string
       from_email:
         description: 'Sending email address for this app (e.g., billing@yourapp.com). Leave blank to use the billing portal default.'
+        required: false
+        type: string
+      stripe_secret_key:
+        description: 'Stripe secret key for this app (sk_live_... or sk_test_...). Leave blank to use the billing portal default.'
+        required: false
+        type: string
+      stripe_publishable_key:
+        description: 'Stripe publishable key for this app (pk_live_... or pk_test_...). Leave blank to use the billing portal default.'
+        required: false
+        type: string
+      stripe_webhook_secret:
+        description: 'Stripe webhook signing secret for this app (whsec_...). Leave blank to use the billing portal default.'
         required: false
         type: string
 
@@ -77,10 +89,22 @@ jobs:
         CRON_SECRET: ${{ secrets.CRON_SECRET }}
         APP_RESEND_API_KEY: ${{ inputs.resend_api_key }}
         APP_FROM_EMAIL: ${{ inputs.from_email }}
+        APP_STRIPE_SECRET_KEY: ${{ inputs.stripe_secret_key }}
+        APP_STRIPE_PK_KEY: ${{ inputs.stripe_publishable_key }}
+        APP_STRIPE_WEBHOOK_SECRET: ${{ inputs.stripe_webhook_secret }}
       run: |
-        # Mask the API key immediately so it never appears in plain text in the logs
+        # Mask sensitive values immediately so they never appear in plain text in the logs
         if [ -n "$APP_RESEND_API_KEY" ]; then
           echo "::add-mask::$APP_RESEND_API_KEY"
+        fi
+        if [ -n "$APP_STRIPE_SECRET_KEY" ]; then
+          echo "::add-mask::$APP_STRIPE_SECRET_KEY"
+        fi
+        if [ -n "$APP_STRIPE_PK_KEY" ]; then
+          echo "::add-mask::$APP_STRIPE_PK_KEY"
+        fi
+        if [ -n "$APP_STRIPE_WEBHOOK_SECRET" ]; then
+          echo "::add-mask::$APP_STRIPE_WEBHOOK_SECRET"
         fi
 
         ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &

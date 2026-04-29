@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { stripe } from "@/lib/stripe";
+import { getStripeForApp } from "@/lib/stripe";
 import { withApiKey } from "@/lib/auth/apiKey";
 import { logError } from "@/app/middleware/logger";
 import { env } from "@/env";
@@ -47,9 +47,9 @@ async function cancelStripeSubscription(
     );
   }
   if (cancelImmediately) {
-    await stripe.subscriptions.cancel(stripeSubscriptionId);
+    await getStripeForApp().subscriptions.cancel(stripeSubscriptionId);
   } else {
-    await stripe.subscriptions.update(stripeSubscriptionId, {
+    await getStripeForApp().subscriptions.update(stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
   }

@@ -16,6 +16,7 @@ This billing app allows you to:
 - Let SaaS backends check subscription status via API
 - **Each SaaS app configures its own pricing plans** - no hardcoded global prices
 - **Each SaaS app owns its own email sending** - per-app Resend API key and sending domain
+- **Each SaaS app owns its own Stripe account** - per-app Stripe keys stored in the database, not in infrastructure secrets
 
 ## Architecture
 
@@ -87,7 +88,7 @@ Used automatically when users navigate to the billing portal through your app.
 
 ### Step 1: Register Your SaaS App with Pricing Plans
 
-Create a plans JSON file in the repo root containing only your Stripe product/price IDs. **Email credentials are never stored in the file** — they are injected at runtime via the CI workflow or CLI flags.
+Create a plans JSON file in the repo root containing your Stripe product/price IDs. **Stripe keys and email credentials are never stored in the file** — they are injected at runtime via the CI workflow or CLI flags.
 
 ```json
 // my-app-plans.json
@@ -124,10 +125,13 @@ See `scripts/example-plans.json` for a ready-to-copy template.
 Then trigger the **`register-app.yml`** GitHub Actions workflow, providing:
 
 - `plans_file` — the filename above (e.g. `my-app-plans.json`)
+- `stripe_secret_key` — your app's Stripe `sk_live_...` or `sk_test_...` key (masked in logs, never committed)
+- `stripe_publishable_key` — your app's Stripe `pk_live_...` or `pk_test_...` key
+- `stripe_webhook_secret` — your app's Stripe `whsec_...` webhook signing secret
 - `resend_api_key` — your Resend `re_live_...` key (masked in logs, never committed)
 - `from_email` — e.g. `billing@yourapp.com`
 
-The workflow registers the app, injects the email credentials into the DB at runtime, then **automatically deletes the plans file from the repo** via a follow-up commit — so no Stripe IDs linger in git history after registration.
+The workflow registers the app, injects all credentials into the DB at runtime, then **automatically deletes the plans file from the repo** via a follow-up commit — so no Stripe IDs linger in git history after registration.
 
 To register locally instead:
 
@@ -271,19 +275,56 @@ export async function checkPremiumAccess(userId: string) {
 
 ## Environment Variables
 
-| Variable                | Required | Description                                                          |
-| ----------------------- | -------- | -------------------------------------------------------------------- |
-| `DATABASE_URL`          | ✅       | PostgreSQL connection string                                         |
-| `SAAS_JWT_SECRET`       | ✅       | Shared secret for JWT signing/verification                           |
-| `STRIPE_SECRET_KEY`     | ✅       | Stripe API secret key                                                |
-| `STRIPE_WEBHOOK_SECRET` | ✅       | Stripe webhook signing secret                                        |
-| `STRIPE_PK_KEY`         | ✅       | Stripe publishable key                                               |
-| `CRON_SECRET`           | ✅       | Secret for authenticating cron job requests                          |
-| `RESEND_API_KEY`        | Optional | Global fallback Resend key (used when an app has no per-app key set) |
+| Variable                | Required | Description                                                                 |
+| ----------------------- | -------- | --------------------------------------------------------------------------- |
+| `DATABASE_URL`          | ✅       | PostgreSQL connection string                                                |
+| `SAAS_JWT_SECRET`       | ✅       | Shared secret for JWT signing/verification                                  |
+| `CRON_SECRET`           | ✅       | Secret for authenticating cron job requests                                 |
+| `STRIPE_SECRET_KEY`     | Optional | Global fallback Stripe secret key (used when an app has no per-app key set) |
+| `STRIPE_WEBHOOK_SECRET` | Optional | Global fallback Stripe webhook secret                                       |
+| `STRIPE_PK_KEY`         | Optional | Global fallback Stripe publishable key                                      |
+| `RESEND_API_KEY`        | Optional | Global fallback Resend key (used when an app has no per-app key set)        |
 
-> **Note:** Stripe price/product IDs are no longer environment variables. Each SaaS app registers its own pricing plans using the `create-app.ts` or `add-plans.ts` scripts.
+> **Note:** Stripe keys and price/product IDs are no longer required infrastructure secrets. Each SaaS app registers its own Stripe credentials and pricing plans via `create-app.ts` or the `register-app.yml` CI workflow. The global env vars serve only as a fallback when no per-app key is stored.
 >
-> **Note:** Each registered app can store its own `resendApiKey` and `fromEmail` in the database (set via `create-app.ts` or the `register-app.yml` CI workflow). These take precedence over the global `RESEND_API_KEY` fallback.
+> **Note:** Each registered app can store its own `resendApiKey` and `fromEmail` in the database. These take precedence over the global `RESEND_API_KEY` fallback.
+
+## Stripe Credentials
+
+Stripe key ownership is **per SaaS app** — each registered app stores its own Stripe secret key, publishable key, and webhook signing secret in the database. This means each SaaS product points to its own Stripe account, and the billing portal never needs global Stripe credentials in its infrastructure secrets.
+
+### How it works
+
+1. When a Stripe API call is made (checkout, cancellation, webhook verification), the app's own `stripeSecretKey` / `stripeWebhookSecret` is fetched from the database.
+2. If the app has no per-app key stored, it falls back to the global `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` environment variables.
+3. If neither is available, the request fails with a clear error.
+
+### Webhook endpoint
+
+Each app gets a dedicated webhook endpoint:
+
+```
+POST /api/billing/webhook/{appId}
+```
+
+Register this URL in your Stripe dashboard (under **Developers → Webhooks**) with your app's `whsec_...` signing secret.
+
+### Registering Stripe credentials for an app
+
+Stripe credentials are always injected at runtime — they are never stored in the plans JSON file or committed to the repo.
+
+**Via CI (recommended):** trigger `register-app.yml` and fill in `stripe_secret_key`, `stripe_publishable_key`, and `stripe_webhook_secret` as workflow inputs. They are masked in logs and written directly to the database.
+
+**Locally:**
+
+```bash
+APP_STRIPE_SECRET_KEY=sk_live_... \
+APP_STRIPE_PK_KEY=pk_live_... \
+APP_STRIPE_WEBHOOK_SECRET=whsec_... \
+npx tsx scripts/create-app.ts saas-a "My Todo App" ./plans.json
+```
+
+Re-running either method on an existing app only patches the credentials; the API key and plans are preserved.
 
 ## Email Notifications
 
@@ -305,11 +346,9 @@ Email credentials are always injected at runtime — they are never stored in th
 **Locally:**
 
 ```bash
+APP_RESEND_API_KEY=re_live_... \
+APP_FROM_EMAIL=billing@yourapp.com \
 npx tsx scripts/create-app.ts saas-a "My Todo App" ./plans.json
-# The script reads RESEND_API_KEY / FROM_EMAIL from .env if set,
-# or you can pass them inside an object-format JSON for a one-off run:
-npx tsx scripts/create-app.ts saas-a "My Todo App" \
-  '{"resendApiKey":"re_live_...","fromEmail":"billing@yourapp.com","plans":[...]}'
 ```
 
 Re-running either method on an existing app only patches the email credentials; the API key and plans are preserved.

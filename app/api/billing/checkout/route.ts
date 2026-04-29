@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { stripe } from "@/lib/stripe";
+import { getStripeForApp } from "@/lib/stripe";
 import { CheckoutRequestSchema } from "@/lib/session/schemas";
 import { env } from "@/env";
 import { withApiKey } from "@/lib/auth/apiKey";
@@ -56,6 +56,14 @@ async function validateAppPlan(appId: string, priceId: string) {
       isActive: true,
     },
   });
+}
+
+async function getAppStripeKey(appId: string): Promise<string | null> {
+  const app = await prisma.app.findUnique({
+    where: { id: appId },
+    select: { stripeSecretKey: true },
+  });
+  return app?.stripeSecretKey ?? null;
 }
 
 // Small helper for consistent error responses
@@ -130,7 +138,10 @@ const checkoutHandler = withApiKey(async (req: NextRequest) => {
     ? `${cancelBase}?returnUrl=${encodeURIComponent(validatedReturnUrl)}&appId=${encodeURIComponent(appId)}`
     : cancelBase;
 
-  const session = await stripe.checkout.sessions.create({
+  const appStripeKey = await getAppStripeKey(appId);
+  const stripeClient = getStripeForApp(appStripeKey);
+
+  const session = await stripeClient.checkout.sessions.create({
     mode: "subscription",
     payment_method_types: ["card"],
     customer_email: email,
