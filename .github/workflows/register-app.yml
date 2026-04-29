@@ -81,12 +81,8 @@ jobs:
 
     - name: Register App with Plans
       env:
-        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
         SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
-        STRIPE_PK_KEY: ${{ secrets.STRIPE_PK_KEY }}
-        STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-        STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-        CRON_SECRET: ${{ secrets.CRON_SECRET }}
         APP_RESEND_API_KEY: ${{ inputs.resend_api_key }}
         APP_FROM_EMAIL: ${{ inputs.from_email }}
         APP_STRIPE_SECRET_KEY: ${{ inputs.stripe_secret_key }}
