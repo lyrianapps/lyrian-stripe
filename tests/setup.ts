@@ -20,13 +20,6 @@ vi.mock("@/env", () => ({
     SAAS_JWT_SECRET: "test-jwt-secret-for-testing",
     NEXT_PUBLIC_APP_URL: "http://localhost:3000",
     CRON_SECRET: "test-cron-secret",
-    STRIPE_PK_KEY: "pk_test_mock",
-    STRIPE_SECRET_KEY: "sk_test_mock_key",
-    STRIPE_WEBHOOK_SECRET: "whsec_test_mock_secret",
-    STRIPE_FREE_PRICE_ID: "price_test_free",
-    STRIPE_BASIC_PRICE_ID: "price_test_basic",
-    STRIPE_FREE_PRODUCT_ID: "prod_test_free",
-    STRIPE_BASIC_PRODUCT_ID: "prod_test_basic",
     BILLING_APP_URL: "http://localhost:3000",
   },
 }));
