@@ -94,7 +94,7 @@ Create a plans JSON file in the repo root containing your Stripe product/price I
 // my-app-plans.json
 [
   {
-    "planKey": "free_trial",
+    "planKey": "free_trial", // owned by our app not stripe
     "name": "Free Trial",
     "description": "Try it free for 14 days",
     "price": 0,
@@ -102,7 +102,7 @@ Create a plans JSON file in the repo root containing your Stripe product/price I
     "stripePriceId": "price_YOUR_FREE_PRICE_ID"
   },
   {
-    "planKey": "basic",
+    "planKey": "basic", // owned by our app not stripe
     "name": "Basic",
     "description": "For individuals and small teams",
     "price": 1000,
@@ -110,7 +110,7 @@ Create a plans JSON file in the repo root containing your Stripe product/price I
     "stripePriceId": "price_YOUR_BASIC_PRICE_ID"
   },
   {
-    "planKey": "pro",
+    "planKey": "pro", // owned by our app not stripe
     "name": "Pro",
     "description": "For businesses and power users",
     "price": 3000,
