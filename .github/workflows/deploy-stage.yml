@@ -54,7 +54,7 @@ jobs:
         TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lyrian_billing_test
         SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
         CRON_SECRET: ${{ secrets.CRON_SECRET }}
-      run: yarn test
+      run: npx vitest run
 
   build-and-deploy:
     runs-on: ubuntu-latest
