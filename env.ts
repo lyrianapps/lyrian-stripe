@@ -36,9 +36,12 @@ function validateEnv() {
   const result = envSchema.safeParse(process.env);
 
   if (!result.success) {
-    console.error("❌ Invalid environment variables:");
-    console.error(result.error.flatten().fieldErrors);
-    throw new Error("Invalid environment variables");
+    const fieldErrors = result.error.flatten().fieldErrors;
+    const details = Object.entries(fieldErrors)
+      .map(([field, errors]) => `  ${field}: ${(errors ?? []).join(", ")}`)
+      .join("\n");
+    console.error("❌ Invalid environment variables:\n" + details);
+    throw new Error(`Invalid environment variables:\n${details}`);
   }
 
   return result.data;
