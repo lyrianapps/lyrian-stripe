@@ -55,7 +55,7 @@ jobs:
     - name: Run integration tests
       env:
         TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lyrian_billing_test
-        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
+        SAAS_JWT_SECRET: ci-test-jwt-secret
         CRON_SECRET: ${{ secrets.CRON_SECRET }}
       run: npx vitest run
 
@@ -65,7 +65,7 @@ jobs:
     - name: Run E2E tests
       env:
         DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lyrian_billing_test
-        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
+        SAAS_JWT_SECRET: ci-test-jwt-secret
         CRON_SECRET: ${{ secrets.CRON_SECRET }}
         NODE_ENV: development
       run: npx playwright test
