@@ -279,9 +279,11 @@ async function findActiveSubscriptionForCustomer(billingCustomerId: string) {
 /** Fetches billing period (start/end dates) from Stripe invoice line items */
 async function fetchBillingPeriodFromInvoice(
   invoiceId: string,
+  appStripeSecretKey?: string | null,
 ): Promise<BillingPeriod | null> {
   logger.info(`[data] Fetching billing period from invoice: ${invoiceId}`);
-  const invoice = await getStripeForApp().invoices.retrieve(invoiceId);
+  const invoice =
+    await getStripeForApp(appStripeSecretKey).invoices.retrieve(invoiceId);
   const period = invoice.lines.data[0]?.period;
 
   if (!period) {
@@ -334,6 +336,20 @@ const checkoutSteps = {
     };
   },
 
+  fetchAppStripeKey: async (
+    ctx: PipelineContext<CheckoutPipelineData>,
+  ): Promise<PipelineContext<CheckoutPipelineData>> => {
+    const { metadata } = ctx.data;
+    const app = await prisma.app.findUnique({
+      where: { id: metadata!.appId },
+      select: { stripeSecretKey: true },
+    });
+    return {
+      ...ctx,
+      data: { ...ctx.data, appStripeSecretKey: app?.stripeSecretKey ?? null },
+    };
+  },
+
   checkExistingSubscription: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -366,11 +382,11 @@ const checkoutSteps = {
   fetchStripeSubscription: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
-    const { session } = ctx.data;
+    const { session, appStripeSecretKey } = ctx.data;
 
-    const stripeSubscription = await getStripeForApp().subscriptions.retrieve(
-      session.subscription as string,
-    );
+    const stripeSubscription = await getStripeForApp(
+      appStripeSecretKey,
+    ).subscriptions.retrieve(session.subscription as string);
 
     return {
       ...ctx,
@@ -448,13 +464,16 @@ const checkoutSteps = {
   fetchBillingPeriod: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
-    const { stripeSubscription } = ctx.data;
+    const { stripeSubscription, appStripeSecretKey } = ctx.data;
 
     const invoiceId = extractInvoiceId(stripeSubscription!.latest_invoice);
     let period: BillingPeriod;
 
     if (invoiceId) {
-      const fetched = await fetchBillingPeriodFromInvoice(invoiceId);
+      const fetched = await fetchBillingPeriodFromInvoice(
+        invoiceId,
+        appStripeSecretKey,
+      );
       period = fetched ?? {
         start: new Date(stripeSubscription!.start_date * 1000),
         end: new Date(stripeSubscription!.start_date * 1000),
@@ -604,6 +623,7 @@ async function handleCheckoutSessionCompleted(
   await runPipeline(createContext(event, { session }), [
     checkoutSteps.validateSession,
     checkoutSteps.extractMetadata,
+    checkoutSteps.fetchAppStripeKey,
     checkoutSteps.checkExistingSubscription,
     checkoutSteps.fetchStripeSubscription,
     checkoutSteps.extractItemData,
@@ -633,6 +653,20 @@ const updateSteps = {
     return {
       ...ctx,
       data: { ...ctx.data, existingSubscription },
+    };
+  },
+
+  fetchAppStripeKey: async (
+    ctx: PipelineContext<UpdatePipelineData>,
+  ): Promise<PipelineContext<UpdatePipelineData>> => {
+    const { existingSubscription } = ctx.data;
+    const app = await prisma.app.findUnique({
+      where: { id: existingSubscription!.appId },
+      select: { stripeSecretKey: true },
+    });
+    return {
+      ...ctx,
+      data: { ...ctx.data, appStripeSecretKey: app?.stripeSecretKey ?? null },
     };
   },
 
@@ -678,11 +712,11 @@ const updateSteps = {
   fetchBillingPeriod: async (
     ctx: PipelineContext<UpdatePipelineData>,
   ): Promise<PipelineContext<UpdatePipelineData>> => {
-    const { subscription } = ctx.data;
+    const { subscription, appStripeSecretKey } = ctx.data;
 
     const invoiceId = extractInvoiceId(subscription.latest_invoice);
     const period = invoiceId
-      ? await fetchBillingPeriodFromInvoice(invoiceId)
+      ? await fetchBillingPeriodFromInvoice(invoiceId, appStripeSecretKey)
       : null;
 
     return {
@@ -750,6 +784,7 @@ async function handleSubscriptionUpdated(event: Stripe.Event): Promise<void> {
 
   await runPipeline(createContext(event, { subscription }), [
     updateSteps.findExisting,
+    updateSteps.fetchAppStripeKey,
     updateSteps.extractItemData,
     updateSteps.resolvePlan,
     updateSteps.fetchBillingPeriod,

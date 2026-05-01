@@ -42,6 +42,7 @@ export interface CheckoutPipelineData {
     billingCustomerId: string;
     planKey?: string;
   };
+  appStripeSecretKey?: string | null;
   stripeSubscription?: Stripe.Subscription;
   itemData?: SubscriptionItemData;
   plan?: Plan;
@@ -68,6 +69,7 @@ export interface UpdatePipelineData {
     plan: Plan;
     appId: string;
   } | null;
+  appStripeSecretKey?: string | null;
   itemData?: SubscriptionItemData;
   plan?: Plan;
   period?: BillingPeriod | null;
