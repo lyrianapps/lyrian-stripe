@@ -36,6 +36,13 @@ const statusHandler = withApiKey(async (request: NextRequest) => {
       subscriptions: {
         orderBy: { updatedAt: "desc" },
         take: 1,
+        select: {
+          plan: true,
+          status: true,
+          currentPeriodEnd: true,
+          cancelAtPeriodEnd: true,
+          accessEndsAt: true,
+        },
       },
     },
   });
@@ -70,6 +77,12 @@ const statusHandler = withApiKey(async (request: NextRequest) => {
   return NextResponse.json({
     plan: subscription.plan,
     status: subscription.status,
+    ...(subscription.cancelAtPeriodEnd && {
+      cancellation: {
+        scheduledAt: subscription.accessEndsAt ?? subscription.currentPeriodEnd,
+        message: `Your subscription will lose access on ${(subscription.accessEndsAt ?? subscription.currentPeriodEnd).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}.`,
+      },
+    }),
   });
 });
 
