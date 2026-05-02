@@ -305,6 +305,7 @@ async function fetchBillingPeriodFromInvoice(
 // =============================================================================
 
 const checkoutSteps = {
+  /** Rejects non-subscription checkouts (e.g. one-time payments) early. */
   validateSession: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -317,6 +318,7 @@ const checkoutSteps = {
     return log(ctx, `[checkout] Validating session ${session.id}`);
   },
 
+  /** Pulls appId, externalUserId, and billingCustomerId from the session metadata. */
   extractMetadata: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -336,6 +338,7 @@ const checkoutSteps = {
     };
   },
 
+  /** Loads the app's own Stripe secret key from the DB so subsequent API calls use the correct account. */
   fetchAppStripeKey: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -350,6 +353,7 @@ const checkoutSteps = {
     };
   },
 
+  /** Guards against duplicate processing — logs a warning if the customer already has an active subscription. */
   checkExistingSubscription: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -379,6 +383,7 @@ const checkoutSteps = {
     return log(ctx, `[checkout] No existing subscription found, proceeding`);
   },
 
+  /** Retrieves the full Stripe subscription object from the checkout session. */
   fetchStripeSubscription: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -394,6 +399,7 @@ const checkoutSteps = {
     };
   },
 
+  /** Extracts the Stripe price ID and product ID from the subscription's first line item. */
   extractItemData: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -413,6 +419,7 @@ const checkoutSteps = {
     };
   },
 
+  /** Maps the Stripe price ID to an internal Plan enum, trying AppPlan then legacy PlanConfig. */
   resolvePlan: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -433,6 +440,7 @@ const checkoutSteps = {
     };
   },
 
+  /** Writes the real Stripe customer ID back to our BillingCustomer record (replaces placeholder set at session creation). */
   updateCustomerStripeId: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -461,6 +469,7 @@ const checkoutSteps = {
     };
   },
 
+  /** Resolves the billing period start/end from the invoice; falls back to subscription start date. */
   fetchBillingPeriod: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -491,6 +500,7 @@ const checkoutSteps = {
     };
   },
 
+  /** Upserts the Subscription record in the DB — creates on first checkout, updates on replay. */
   persistSubscription: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -523,6 +533,7 @@ const checkoutSteps = {
     return ctx;
   },
 
+  /** Records a 'created' SubscriptionEvent for audit history. */
   logSubscriptionCreated: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -544,6 +555,7 @@ const checkoutSteps = {
     return log(ctx, `[checkout] Subscription created, plan: ${plan}`);
   },
 
+  /** Loads customer email, app name, and plan display info needed to compose the welcome email. */
   fetchEmailContext: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -580,6 +592,7 @@ const checkoutSteps = {
     };
   },
 
+  /** Sends a subscription_created email via Resend; skips silently if no customer email on record. */
   sendWelcomeEmail: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -638,6 +651,7 @@ async function handleCheckoutSessionCompleted(
 }
 
 const updateSteps = {
+  /** Looks up the local Subscription record by Stripe ID — halts if not found (event arrived before checkout). */
   findExisting: async (
     ctx: PipelineContext<UpdatePipelineData>,
   ): Promise<PipelineContext<UpdatePipelineData>> => {
@@ -656,6 +670,7 @@ const updateSteps = {
     };
   },
 
+  /** Loads the app's own Stripe secret key from the DB so subsequent API calls use the correct account. */
   fetchAppStripeKey: async (
     ctx: PipelineContext<UpdatePipelineData>,
   ): Promise<PipelineContext<UpdatePipelineData>> => {
@@ -670,6 +685,7 @@ const updateSteps = {
     };
   },
 
+  /** Extracts the Stripe price ID and product ID from the updated subscription's line items. */
   extractItemData: async (
     ctx: PipelineContext<UpdatePipelineData>,
   ): Promise<PipelineContext<UpdatePipelineData>> => {
@@ -686,6 +702,7 @@ const updateSteps = {
     };
   },
 
+  /** Maps the updated price ID to an internal Plan enum, trying AppPlan then legacy PlanConfig. */
   resolvePlan: async (
     ctx: PipelineContext<UpdatePipelineData>,
   ): Promise<PipelineContext<UpdatePipelineData>> => {
@@ -709,6 +726,7 @@ const updateSteps = {
     };
   },
 
+  /** Fetches the new billing period from the latest invoice, if present. */
   fetchBillingPeriod: async (
     ctx: PipelineContext<UpdatePipelineData>,
   ): Promise<PipelineContext<UpdatePipelineData>> => {
@@ -725,6 +743,7 @@ const updateSteps = {
     };
   },
 
+  /** Writes the updated status, plan, price IDs, and billing period back to the DB. */
   persistUpdate: async (
     ctx: PipelineContext<UpdatePipelineData>,
   ): Promise<PipelineContext<UpdatePipelineData>> => {
@@ -748,6 +767,7 @@ const updateSteps = {
     return ctx;
   },
 
+  /** Records an 'upgraded' or 'downgraded' SubscriptionEvent if the plan changed; otherwise logs a no-op update. */
   logPlanChangeIfNeeded: async (
     ctx: PipelineContext<UpdatePipelineData>,
   ): Promise<PipelineContext<UpdatePipelineData>> => {
@@ -795,6 +815,7 @@ async function handleSubscriptionUpdated(event: Stripe.Event): Promise<void> {
 
 /** Pipeline steps for handling subscription deletion/cancellation */
 const deleteSteps = {
+  /** Looks up the local Subscription record — halts if already removed or never created. */
   findExisting: async (
     ctx: PipelineContext<DeletePipelineData>,
   ): Promise<PipelineContext<DeletePipelineData>> => {
@@ -813,6 +834,7 @@ const deleteSteps = {
     };
   },
 
+  /** Determines when access ends from cancel_at or ended_at on the Stripe subscription. */
   extractCancellationDate: async (
     ctx: PipelineContext<DeletePipelineData>,
   ): Promise<PipelineContext<DeletePipelineData>> => {
@@ -825,6 +847,7 @@ const deleteSteps = {
     };
   },
 
+  /** Marks the subscription as canceled and sets accessEndsAt if a future end date was provided. */
   persistCancellation: async (
     ctx: PipelineContext<DeletePipelineData>,
   ): Promise<PipelineContext<DeletePipelineData>> => {
@@ -841,6 +864,7 @@ const deleteSteps = {
     return ctx;
   },
 
+  /** Records a 'canceled' SubscriptionEvent for audit history. */
   logCancellation: async (
     ctx: PipelineContext<DeletePipelineData>,
   ): Promise<PipelineContext<DeletePipelineData>> => {
@@ -879,6 +903,7 @@ async function handleSubscriptionDeleted(event: Stripe.Event): Promise<void> {
 
 /** Pipeline steps for handling failed invoice payments */
 const invoiceFailedSteps = {
+  /** Extracts the Stripe customer ID string from the invoice — halts if missing. */
   extractCustomerId: async (
     ctx: PipelineContext<InvoicePipelineData>,
   ): Promise<PipelineContext<InvoicePipelineData>> => {
@@ -896,6 +921,7 @@ const invoiceFailedSteps = {
     return log(ctx, `[invoice] Customer ID: ${customerId}`);
   },
 
+  /** Looks up our BillingCustomer by Stripe customer ID — halts if not found. */
   findBillingCustomer: async (
     ctx: PipelineContext<InvoicePipelineData>,
   ): Promise<PipelineContext<InvoicePipelineData>> => {
@@ -929,6 +955,7 @@ const invoiceFailedSteps = {
     };
   },
 
+  /** Finds the linked local Subscription record from the invoice; continues without halting for one-time payments. */
   findSubscription: async (
     ctx: PipelineContext<InvoicePipelineData>,
   ): Promise<PipelineContext<InvoicePipelineData>> => {
@@ -952,6 +979,7 @@ const invoiceFailedSteps = {
     };
   },
 
+  /** Extracts failure code, message, attempt count, and next retry time from the invoice. */
   extractFailureInfo: async (
     ctx: PipelineContext<InvoicePipelineData>,
   ): Promise<PipelineContext<InvoicePipelineData>> => {
@@ -988,6 +1016,7 @@ const invoiceFailedSteps = {
     };
   },
 
+  /** Writes a payment_failed PaymentEvent to the DB with failure details and attempt count. */
   persistPaymentEvent: async (
     ctx: PipelineContext<InvoicePipelineData>,
   ): Promise<PipelineContext<InvoicePipelineData>> => {
@@ -1016,6 +1045,7 @@ const invoiceFailedSteps = {
     );
   },
 
+  /** Sets the subscription status to past_due and records a payment_failed SubscriptionEvent. */
   updateSubscriptionStatus: async (
     ctx: PipelineContext<InvoicePipelineData>,
   ): Promise<PipelineContext<InvoicePipelineData>> => {
@@ -1047,6 +1077,7 @@ const invoiceFailedSteps = {
     );
   },
 
+  /** Logs structured payment failure details for visibility and alerting. */
   logForNotification: async (
     ctx: PipelineContext<InvoicePipelineData>,
   ): Promise<PipelineContext<InvoicePipelineData>> => {
@@ -1130,6 +1161,7 @@ const invoiceSucceededSteps = {
     };
   },
 
+  /** Finds the linked local Subscription record; continues without halting for one-time payments. */
   findSubscription: async (
     ctx: PipelineContext<InvoicePipelineData>,
   ): Promise<PipelineContext<InvoicePipelineData>> => {
@@ -1155,6 +1187,7 @@ const invoiceSucceededSteps = {
     };
   },
 
+  /** Writes a payment_succeeded PaymentEvent to the DB. */
   persistPaymentEvent: async (
     ctx: PipelineContext<InvoicePipelineData>,
   ): Promise<PipelineContext<InvoicePipelineData>> => {
@@ -1179,6 +1212,7 @@ const invoiceSucceededSteps = {
     );
   },
 
+  /** Reactivates a past_due subscription to active when payment succeeds; no-op for already active subscriptions. */
   reactivateSubscriptionIfNeeded: async (
     ctx: PipelineContext<InvoicePipelineData>,
   ): Promise<PipelineContext<InvoicePipelineData>> => {
