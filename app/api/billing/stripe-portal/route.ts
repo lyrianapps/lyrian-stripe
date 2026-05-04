@@ -32,9 +32,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid session" }, { status: 401 });
     }
 
-    // Get the billing customer with their Stripe customer ID
+    // Get the billing customer with their Stripe customer ID and app's Stripe key
     const billingCustomer = await prisma.billingCustomer.findUnique({
       where: { id: session.billingCustomerId },
+      include: {
+        app: { select: { stripeSecretKey: true } },
+      },
     });
 
     if (!billingCustomer?.stripeCustomerId) {
@@ -60,12 +63,12 @@ export async function POST(req: NextRequest) {
     const defaultReturnUrl = `${origin}/subscription`;
 
     // Create Stripe Customer Portal session
-    const portalSession = await getStripeForApp().billingPortal.sessions.create(
-      {
-        customer: billingCustomer.stripeCustomerId,
-        return_url: returnUrl || defaultReturnUrl,
-      },
-    );
+    const portalSession = await getStripeForApp(
+      billingCustomer.app.stripeSecretKey,
+    ).billingPortal.sessions.create({
+      customer: billingCustomer.stripeCustomerId,
+      return_url: returnUrl || defaultReturnUrl,
+    });
 
     return NextResponse.json({ url: portalSession.url });
   } catch (err) {
