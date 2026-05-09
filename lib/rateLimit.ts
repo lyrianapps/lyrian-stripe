@@ -13,14 +13,12 @@ const rateLimitPool = isTestEnv
       max: 5, // Small pool just for rate limiting
     });
 
-// Track initialization state to prevent race conditions on startup
-let postgresLimiterReady: Promise<void> | null = null;
-let isInitialized = false;
-
 /**
- * Wrapper that handles Postgres rate limiter initialization gracefully.
- * During initialization (first few requests on startup), requests are allowed through
- * to prevent "Too many requests" errors while the rate limit table is being created.
+ * Wrapper around RateLimiterPostgres / RateLimiterMemory that fails open on
+ * infrastructure errors (DB unreachable, transient pool errors, etc.) so that
+ * a backend hiccup never blocks legitimate API traffic. Genuine rate-limit
+ * rejections (which carry msBeforeNext / remainingPoints) are re-thrown so
+ * the middleware can return a proper 429.
  */
 class SafeRateLimiter {
   private limiter: RateLimiterPostgres | RateLimiterMemory;
@@ -38,21 +36,6 @@ class SafeRateLimiter {
   }
 
   async consume(key: string, pointsToConsume = 1) {
-    // If not initialized yet, allow the request through
-    // This prevents blocking during table creation
-    if (!isInitialized && postgresLimiterReady) {
-      try {
-        // Wait briefly for initialization, but don't block too long
-        await Promise.race([
-          postgresLimiterReady,
-          new Promise((resolve) => setTimeout(resolve, 100)),
-        ]);
-      } catch {
-        // If initialization fails, allow request through
-        return { remainingPoints: this.points - 1, msBeforeNext: 60000 };
-      }
-    }
-
     try {
       return await this.limiter.consume(key, pointsToConsume);
     } catch (error) {
@@ -81,26 +64,6 @@ class SafeRateLimiter {
   }
 }
 
-// Initialize the Postgres rate limiter table on startup
-function initializePostgresLimiter(limiter: RateLimiterPostgres): void {
-  if (postgresLimiterReady) return;
-
-  postgresLimiterReady = new Promise<void>((resolve) => {
-    // Perform a dummy consume to trigger table creation
-    limiter
-      .consume("__init__", 0)
-      .then(() => {
-        isInitialized = true;
-        resolve();
-      })
-      .catch(() => {
-        // Table might already exist or there's an error - either way, mark as ready
-        isInitialized = true;
-        resolve();
-      });
-  });
-}
-
 const createRateLimiter = (
   keyPrefix: string,
   points: number,
@@ -121,11 +84,13 @@ const createRateLimiter = (
     points, // Number of requests
     duration: durationSeconds, // Per X seconds
     tableName: "rate_limits", // Shared table for all limiters
-    tableCreated: false, // Will be created automatically
+    // The table is created via Prisma migration
+    // (prisma/migrations/20260509000000_add_rate_limits_table). Setting this
+    // to true skips rate-limiter-flexible's auto-create attempt, which can
+    // fail silently in deployed environments and produce a flood of
+    // "Table is not created yet" errors.
+    tableCreated: true,
   });
-
-  // Trigger initialization on first limiter creation
-  initializePostgresLimiter(limiter);
 
   return new SafeRateLimiter(limiter, keyPrefix, points);
 };
