@@ -15,6 +15,7 @@ export interface SubscriptionCandidate {
   id: string;
   stripeSubscriptionId: string;
   plan: "basic" | "pro";
+  appStripeSecretKey?: string | null;
 }
 
 /**
@@ -56,9 +57,9 @@ export class StripeSubscriptionChecker implements SubscriptionChecker {
     subscription: SubscriptionCandidate,
   ): Promise<SubscriptionCheckResult> {
     try {
-      const stripeSubscription = await getStripeForApp().subscriptions.retrieve(
-        subscription.stripeSubscriptionId,
-      );
+      const stripeSubscription = await getStripeForApp(
+        subscription.appStripeSecretKey,
+      ).subscriptions.retrieve(subscription.stripeSubscriptionId);
 
       return await this.handleStripeStatus(subscription, stripeSubscription);
     } catch (error: unknown) {

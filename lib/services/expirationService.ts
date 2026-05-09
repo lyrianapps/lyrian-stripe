@@ -32,10 +32,18 @@ export async function findExpiredCandidates(): Promise<
       id: true,
       stripeSubscriptionId: true,
       plan: true,
+      billingCustomer: {
+        select: { app: { select: { stripeSecretKey: true } } },
+      },
     },
   });
 
-  return subscriptions as SubscriptionCandidate[];
+  return subscriptions.map((s) => ({
+    id: s.id,
+    stripeSubscriptionId: s.stripeSubscriptionId,
+    plan: s.plan as "basic" | "pro",
+    appStripeSecretKey: s.billingCustomer.app.stripeSecretKey,
+  }));
 }
 
 /**
@@ -54,10 +62,18 @@ export async function findAllActivePaidSubscriptions(): Promise<
       id: true,
       stripeSubscriptionId: true,
       plan: true,
+      billingCustomer: {
+        select: { app: { select: { stripeSecretKey: true } } },
+      },
     },
   });
 
-  return subscriptions as SubscriptionCandidate[];
+  return subscriptions.map((s) => ({
+    id: s.id,
+    stripeSubscriptionId: s.stripeSubscriptionId,
+    plan: s.plan as "basic" | "pro",
+    appStripeSecretKey: s.billingCustomer.app.stripeSecretKey,
+  }));
 }
 
 /**
