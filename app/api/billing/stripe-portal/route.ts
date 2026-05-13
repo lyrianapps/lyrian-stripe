@@ -36,7 +36,13 @@ export async function POST(req: NextRequest) {
     const billingCustomer = await prisma.billingCustomer.findUnique({
       where: { id: session.billingCustomerId },
       include: {
-        app: { select: { stripeSecretKey: true } },
+        app: {
+          select: {
+            stripeSecretKey: true,
+            stripePortalConfigId: true,
+            id: true,
+          },
+        },
       },
     });
 
@@ -49,25 +55,69 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Parse request body for optional returnUrl
+    // Parse request body for optional returnUrl and flow
     let returnUrl: string | undefined;
+    let flow: string | undefined;
     try {
       const body = await req.json();
       returnUrl = body.returnUrl;
+      flow = body.flow;
     } catch {
       // No body or invalid JSON is fine
     }
+
+    // Validate flow value to avoid passing arbitrary strings to Stripe
+    const validFlows = ["payment_method_update"] as const;
+    type ValidFlow = (typeof validFlows)[number];
+    const portalFlow: ValidFlow | undefined = validFlows.includes(
+      flow as ValidFlow,
+    )
+      ? (flow as ValidFlow)
+      : undefined;
 
     // Default return URL is the subscription page
     const origin = req.nextUrl.origin;
     const defaultReturnUrl = `${origin}/subscription`;
 
-    // Create Stripe Customer Portal session
-    const portalSession = await getStripeForApp(
-      billingCustomer.app.stripeSecretKey,
-    ).billingPortal.sessions.create({
+    const stripeClient = getStripeForApp(billingCustomer.app.stripeSecretKey);
+
+    // Ensure we have a portal configuration that disables the cancel button.
+    // Users must cancel through our delete-account flow — we don't want them
+    // bypassing it by canceling directly in the Stripe portal. We lazily
+    // create this configuration once per app and cache the ID in the DB.
+    let portalConfigId: string | null =
+      billingCustomer.app.stripePortalConfigId ?? null;
+    if (!portalConfigId) {
+      const portalConfig =
+        await stripeClient.billingPortal.configurations.create({
+          features: {
+            invoice_history: { enabled: true },
+            payment_method_update: { enabled: true },
+            // Disable cancel — users must go through our cancel/delete flow.
+            subscription_cancel: { enabled: false },
+            // We handle upgrade/downgrade natively; keep it off in the portal.
+            subscription_update: { enabled: false },
+          },
+        });
+      portalConfigId = portalConfig.id;
+      await prisma.app.update({
+        where: { id: billingCustomer.app.id },
+        data: { stripePortalConfigId: portalConfigId },
+      });
+    }
+
+    // Create Stripe Customer Portal session.
+    // When flow=payment_method_update (e.g. from the PaymentWarningBanner),
+    // Stripe opens a focused "replace your default card" screen rather than
+    // the general payment-methods list. This prevents the user from
+    // accumulating multiple cards and avoids the duplicate-add scenario.
+    const portalSession = await stripeClient.billingPortal.sessions.create({
       customer: billingCustomer.stripeCustomerId,
       return_url: returnUrl || defaultReturnUrl,
+      configuration: portalConfigId,
+      ...(portalFlow && {
+        flow_data: { type: portalFlow },
+      }),
     });
 
     return NextResponse.json({ url: portalSession.url });

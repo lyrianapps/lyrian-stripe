@@ -61,6 +61,19 @@ const statusHandler = withApiKey(async (request: NextRequest) => {
 
   const subscription = billingCustomer.subscriptions[0];
 
+  // Treat incomplete subscriptions as not-subscribed: the customer started
+  // checkout but the initial payment failed (e.g. declined / lost card).
+  // We must not report a paid plan or downstream consumers will grant access
+  // despite no successful payment. If the user later pays the open invoice,
+  // a fresh subscription record with active status will be created.
+  // (incomplete_expired is mapped to "incomplete" by the webhook mapper.)
+  if (subscription.status === "incomplete") {
+    return NextResponse.json({
+      plan: null,
+      status: null,
+    });
+  }
+
   // Check if subscription has expired
   const now = new Date();
   const isExpired = subscription.currentPeriodEnd < now;

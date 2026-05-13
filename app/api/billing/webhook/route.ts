@@ -305,7 +305,19 @@ async function fetchBillingPeriodFromInvoice(
 // =============================================================================
 
 const checkoutSteps = {
-  /** Rejects non-subscription checkouts (e.g. one-time payments) early. */
+  /**
+   * Rejects non-subscription checkouts (e.g. one-time payments) and sessions
+   * where payment was not collected.
+   *
+   * Stripe fires checkout.session.completed even when the initial payment fails
+   * (e.g. lost/stolen cards, Radar-blocked cards like 4100000000000019). In
+   * those cases the session has payment_status: "unpaid". We halt immediately
+   * here — before any Stripe API calls — so we never persist a subscription
+   * for a session that has no successful payment.
+   *
+   * "no_payment_required" is allowed through: it indicates a $0 / trial
+   * subscription where no upfront charge was needed.
+   */
   validateSession: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
@@ -313,6 +325,16 @@ const checkoutSteps = {
 
     if (session.mode !== "subscription" || !session.subscription) {
       return halt(ctx, "Not a subscription checkout");
+    }
+
+    if (session.payment_status === "unpaid") {
+      logger.warn(
+        `[checkout] Session ${session.id} has payment_status "unpaid" — payment was not collected (declined / blocked card). Skipping persistence.`,
+      );
+      return halt(
+        ctx,
+        `Payment not collected (session payment_status: unpaid)`,
+      );
     }
 
     return log(ctx, `[checkout] Validating session ${session.id}`);
@@ -397,6 +419,35 @@ const checkoutSteps = {
       ...ctx,
       data: { ...ctx.data, stripeSubscription },
     };
+  },
+
+  /**
+   * Halts the pipeline if the initial subscription payment failed (e.g. card was
+   * declined as lost / stolen / insufficient funds). Stripe Checkout will still
+   * redirect the user to success_url and emit checkout.session.completed even
+   * when the first invoice charge fails, leaving the subscription in `incomplete`
+   * state. We must not persist these as subscriptions — otherwise the user
+   * appears as paid in our DB despite no payment going through. If the user
+   * later pays the open invoice, invoice.payment_succeeded will create the
+   * record properly.
+   */
+  validatePaymentSucceeded: async (
+    ctx: PipelineContext<CheckoutPipelineData>,
+  ): Promise<PipelineContext<CheckoutPipelineData>> => {
+    const { stripeSubscription, session } = ctx.data;
+    const status = stripeSubscription!.status;
+
+    if (status === "incomplete" || status === "incomplete_expired") {
+      logger.warn(
+        `[checkout] Subscription ${stripeSubscription!.id} for session ${session.id} has status "${status}" — initial payment did not succeed (likely declined card). Skipping persistence.`,
+      );
+      return halt(
+        ctx,
+        `Initial payment did not succeed (subscription status: ${status})`,
+      );
+    }
+
+    return ctx;
   },
 
   /** Extracts the Stripe price ID and product ID from the subscription's first line item. */
@@ -639,6 +690,7 @@ async function handleCheckoutSessionCompleted(
     checkoutSteps.fetchAppStripeKey,
     checkoutSteps.checkExistingSubscription,
     checkoutSteps.fetchStripeSubscription,
+    checkoutSteps.validatePaymentSucceeded,
     checkoutSteps.extractItemData,
     checkoutSteps.resolvePlan,
     checkoutSteps.updateCustomerStripeId,
@@ -1278,6 +1330,94 @@ async function handleInvoicePaymentSucceeded(
 }
 
 // =============================================================================
+// PAYMENT METHOD DEDUPLICATION
+// =============================================================================
+
+/**
+ * Handles payment_method.attached: detects and removes duplicate payment methods.
+ *
+ * When a user adds a card in the Stripe Customer Portal that shares a fingerprint
+ * with an already-stored card, Stripe creates a second PaymentMethod object with
+ * the same underlying card details. We detect this via the card fingerprint and
+ * immediately detach the newly attached duplicate, keeping the original that is
+ * likely already set as the subscription default.
+ *
+ * NOTE: Real-time user-facing messaging ("This card is already added") is not
+ * possible within the Stripe-hosted portal. This webhook silently removes the
+ * duplicate so it never persists on the customer's account.
+ */
+async function handlePaymentMethodAttached(event: Stripe.Event): Promise<void> {
+  const paymentMethod = event.data.object as Stripe.PaymentMethod;
+
+  if (!paymentMethod.customer) {
+    logger.info(
+      `[payment-method] No customer on ${paymentMethod.id}, skipping`,
+    );
+    return;
+  }
+
+  const customerId =
+    typeof paymentMethod.customer === "string"
+      ? paymentMethod.customer
+      : paymentMethod.customer.id;
+
+  const fingerprint = paymentMethod.card?.fingerprint;
+  if (!fingerprint) {
+    logger.info(
+      `[payment-method] No card fingerprint on ${paymentMethod.id}, skipping`,
+    );
+    return;
+  }
+
+  // Resolve the app's Stripe key via the billing customer record
+  const billingCustomer = await prisma.billingCustomer.findUnique({
+    where: { stripeCustomerId: customerId },
+    include: { app: { select: { stripeSecretKey: true } } },
+  });
+
+  if (!billingCustomer) {
+    logger.warn(
+      `[payment-method] No billing customer found for Stripe customer ${customerId}`,
+    );
+    return;
+  }
+
+  const stripeClient = getStripeForApp(billingCustomer.app.stripeSecretKey);
+
+  // Fetch all card payment methods currently attached to this customer
+  const allMethods = await stripeClient.paymentMethods.list({
+    customer: customerId,
+    type: "card",
+  });
+
+  // A duplicate is any pre-existing PM (older ID) with the same card fingerprint
+  const duplicatesOfExisting = allMethods.data.filter(
+    (pm) => pm.id !== paymentMethod.id && pm.card?.fingerprint === fingerprint,
+  );
+
+  if (duplicatesOfExisting.length === 0) {
+    logger.info(
+      `[payment-method] No duplicate found for ${paymentMethod.id} (fingerprint: ${fingerprint})`,
+    );
+    return;
+  }
+
+  // Detach the newly attached PM — keep the original which the subscription
+  // likely already references as its default payment method
+  logger.warn(
+    `[payment-method] Duplicate card detected for customer ${customerId}. ` +
+      `Detaching newly attached ${paymentMethod.id} (fingerprint: ${fingerprint}). ` +
+      `Existing PM(s): ${duplicatesOfExisting.map((p) => p.id).join(", ")}`,
+  );
+
+  await stripeClient.paymentMethods.detach(paymentMethod.id);
+
+  logger.info(
+    `[payment-method] Detached duplicate payment method ${paymentMethod.id}`,
+  );
+}
+
+// =============================================================================
 // WEBHOOK HANDLER REGISTRY
 // =============================================================================
 
@@ -1287,6 +1427,7 @@ export const webhookHandlers: Record<string, WebhookHandler> = {
   "customer.subscription.deleted": handleSubscriptionDeleted,
   "invoice.payment_failed": handleInvoicePaymentFailed,
   "invoice.payment_succeeded": handleInvoicePaymentSucceeded,
+  "payment_method.attached": handlePaymentMethodAttached,
 };
 
 // =============================================================================

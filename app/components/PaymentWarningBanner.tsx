@@ -30,7 +30,10 @@ export function PaymentWarningBanner({
       const res = await fetch("/api/billing/stripe-portal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ returnUrl }),
+        // flow: payment_method_update opens a focused "replace default card"
+        // screen instead of the general payment-methods list, preventing
+        // the user from accidentally adding duplicate cards.
+        body: JSON.stringify({ returnUrl, flow: "payment_method_update" }),
       });
 
       const data = await res.json();
