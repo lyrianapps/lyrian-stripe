@@ -1,7 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { Heading } from "@/app/components/Heading";
-import { Paragraph } from "@/app/components/Paragraph";
 import { getStripeForApp } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 
@@ -18,73 +15,76 @@ export default async function SubscriptionSuccessPage({
     ? params.session_id[0]
     : params?.session_id;
 
-  // Verify the Stripe checkout session to detect declined / blocked cards.
-  // Stripe always redirects to success_url even when payment_status is
-  // "unpaid" (e.g. lost card, Radar-blocked card). We check server-side so
-  // we can show an appropriate error instead of a false success message.
   if (sessionId) {
-    // Resolve the app's Stripe key via the session metadata appId
-    let paymentStatus: string | null = null;
-    try {
-      // Use a minimal retrieve — we only need payment_status
-      // Fetch the app's Stripe key from the session metadata appId
-      const appId = Array.isArray(params?.appId)
-        ? params.appId[0]
-        : params?.appId;
-      const appStripeKey = appId
-        ? ((
-            await prisma.app.findUnique({
-              where: { id: appId },
-              select: { stripeSecretKey: true },
-            })
-          )?.stripeSecretKey ?? null)
-        : null;
+    // In non-production environments, allow e2e tests to override payment_status
+    // and decline_code via query params without needing a real Stripe session.
+    const testPaymentStatus =
+      process.env.NODE_ENV !== "production"
+        ? Array.isArray(params?._test_payment_status)
+          ? params._test_payment_status[0]
+          : params?._test_payment_status
+        : undefined;
+    const testDeclineCode =
+      process.env.NODE_ENV !== "production"
+        ? Array.isArray(params?._test_decline_code)
+          ? params._test_decline_code[0]
+          : params?._test_decline_code
+        : undefined;
 
-      const stripeSession =
-        await getStripeForApp(appStripeKey).checkout.sessions.retrieve(
-          sessionId,
-        );
-      paymentStatus = stripeSession.payment_status;
-    } catch {
-      // If we can't retrieve the session (e.g. wrong key, expired), fall
-      // through to the success view — the webhook is the source of truth.
+    let paymentStatus: string | null = testPaymentStatus ?? null;
+    // Default to the generic code; overridden below from Stripe or test param.
+    let declineCode = testDeclineCode ?? "declined";
+
+    if (!testPaymentStatus) {
+      try {
+        const appId = Array.isArray(params?.appId)
+          ? params.appId[0]
+          : params?.appId;
+        const appStripeKey = appId
+          ? ((
+              await prisma.app.findUnique({
+                where: { id: appId },
+                select: { stripeSecretKey: true },
+              })
+            )?.stripeSecretKey ?? null)
+          : null;
+
+        const stripeSession = await getStripeForApp(
+          appStripeKey,
+        ).checkout.sessions.retrieve(sessionId, {
+          expand: ["payment_intent"],
+        });
+        paymentStatus = stripeSession.payment_status;
+
+        // Extract the specific decline reason from the payment intent so we
+        // can show a more actionable message (e.g. "card reported lost").
+        if (
+          paymentStatus === "unpaid" &&
+          stripeSession.payment_intent &&
+          typeof stripeSession.payment_intent !== "string"
+        ) {
+          const code =
+            stripeSession.payment_intent.last_payment_error?.decline_code ??
+            stripeSession.payment_intent.last_payment_error?.code;
+          if (code) declineCode = code;
+        }
+      } catch {
+        // If we can't retrieve the session (e.g. wrong key, expired), fall
+        // through to the success redirect — the webhook is the source of truth.
+      }
     }
 
     if (paymentStatus === "unpaid") {
-      return (
-        <div className="max-w-xl mx-auto py-24 px-4 text-center">
-          <Heading level={1} className="text-red-600 mb-4">
-            Payment Failed
-          </Heading>
-          <Paragraph className="mb-6">
-            Your card was declined or flagged. No charge was made and no
-            subscription was created. Please go back and try a different card.
-          </Paragraph>
-          <Link href="/subscription" className="text-blue-600 underline">
-            Try a different plan
-          </Link>
-        </div>
-      );
+      const query = new URLSearchParams({ checkout_declined: declineCode });
+      if (returnUrl) query.set("returnUrl", returnUrl);
+      redirect(`/subscription?${query.toString()}`);
     }
   }
 
-  // Redirect server-side if returnUrl is provided (only on success)
+  // Successful payment — redirect to subscription page with a success banner.
+  // If the caller provided their own returnUrl, send them back to their app.
   if (returnUrl) {
     redirect(returnUrl);
   }
-
-  return (
-    <div className="max-w-xl mx-auto py-24 px-4 text-center">
-      <Heading level={1} className="text-green-600 mb-4">
-        Subscription Successful!
-      </Heading>
-      <Paragraph className="mb-6">
-        Thank you for subscribing. Your plan is now active and you can access
-        all features.
-      </Paragraph>
-      <Link href="/subscription" className="text-blue-600 underline">
-        Go to Subscription Management
-      </Link>
-    </div>
-  );
+  redirect("/subscription?checkout_success=1");
 }

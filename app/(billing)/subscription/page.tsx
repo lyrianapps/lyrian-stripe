@@ -7,6 +7,7 @@ import { Heading } from "@/app/components/Heading";
 import { Paragraph } from "@/app/components/Paragraph";
 import SubscriptionPlans from "@/app/components/SubscriptionPlans";
 import { RemainingMinutesClient } from "@/app/components/RemainingMinutesClient";
+import { UpdatePaymentMethodButton } from "@/app/components/ManageBillingButton";
 import { PaymentWarningBanner } from "@/app/components/PaymentWarningBanner";
 
 import { getSession } from "@/lib/session";
@@ -80,6 +81,33 @@ export default async function SubscriptionPage({
   const returnUrl = Array.isArray(resolvedSearchParams.returnUrl)
     ? resolvedSearchParams.returnUrl[0]
     : (resolvedSearchParams.returnUrl as string | undefined);
+  const checkoutDeclinedCode = Array.isArray(
+    resolvedSearchParams.checkout_declined,
+  )
+    ? resolvedSearchParams.checkout_declined[0]
+    : (resolvedSearchParams.checkout_declined as string | undefined);
+  const checkoutSuccess = Boolean(resolvedSearchParams.checkout_success);
+
+  const declineMessages: Record<string, { title: string; body: string }> = {
+    lost_card: {
+      title: "Card reported lost",
+      body: "Your card has been reported as lost. No charge was made and no subscription was created. Please use a different card.",
+    },
+    stolen_card: {
+      title: "Card reported stolen",
+      body: "Your card has been reported as stolen. No charge was made and no subscription was created. Please use a different card.",
+    },
+    fraudulent: {
+      title: "Transaction flagged",
+      body: "This transaction was flagged as suspicious and was not processed. No charge was made and no subscription was created. Please use a different card or contact your bank.",
+    },
+  };
+  const declineBanner = checkoutDeclinedCode
+    ? (declineMessages[checkoutDeclinedCode] ?? {
+        title: "Card declined",
+        body: "Your card was declined or flagged. No charge was made and no subscription was created. Please try a different card.",
+      })
+    : null;
 
   const isDevApp = Boolean(
     session?.appId && String(session.appId).startsWith("dev"),
@@ -108,11 +136,33 @@ export default async function SubscriptionPage({
         <CreditCard className="w-7 h-7 text-blue-600" /> Subscription
       </Heading>
 
+      {declineBanner && (
+        <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-4 text-red-800">
+          <div className="font-semibold">{declineBanner.title}</div>
+          <p className="text-sm mt-1">{declineBanner.body}</p>
+        </div>
+      )}
+
+      {checkoutSuccess && (
+        <div className="mb-4 rounded-md bg-green-50 border border-green-200 p-4 text-green-800">
+          <div className="font-semibold">Subscription activated</div>
+          <p className="text-sm mt-1">
+            Your payment was successful and your subscription is now active.
+          </p>
+        </div>
+      )}
+
       {hasFailedPayments && <PaymentWarningBanner returnUrl={returnUrl} />}
 
       <Paragraph>
         Manage your subscription plan. Upgrade, downgrade, or cancel anytime.
       </Paragraph>
+
+      {/* Only show for active subscribers — gives them a way to proactively
+          update their card before it expires, without exposing cancel. */}
+      {subscription && subscription.status === "active" && (
+        <UpdatePaymentMethodButton returnUrl={returnUrl} className="mb-6" />
+      )}
 
       {isTest && (
         <div className="mb-6 rounded-md bg-sky-50 border border-sky-200 p-3 text-sky-800">

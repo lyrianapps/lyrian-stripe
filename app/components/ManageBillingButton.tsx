@@ -1,22 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { Receipt, ExternalLink } from "lucide-react";
+import { CreditCard, ExternalLink } from "lucide-react";
 import { Button } from "./Button";
 
-interface ManageBillingButtonProps {
+interface UpdatePaymentMethodButtonProps {
   returnUrl?: string;
   className?: string;
 }
 
 /**
- * Button that redirects users to Stripe's Customer Portal
- * where they can view invoices, update payment methods, etc.
+ * Button that opens the Stripe Customer Portal in the focused
+ * payment_method_update flow so users can proactively update their card.
+ * The cancel button is disabled in the portal configuration.
  */
-export function ManageBillingButton({
+export function UpdatePaymentMethodButton({
   returnUrl,
   className,
-}: ManageBillingButtonProps) {
+}: UpdatePaymentMethodButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,19 +29,18 @@ export function ManageBillingButton({
       const res = await fetch("/api/billing/stripe-portal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ returnUrl }),
+        body: JSON.stringify({ returnUrl, flow: "payment_method_update" }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Failed to open billing portal");
+        setError(data.error || "Failed to open payment method update");
         return;
       }
 
-      // Redirect to Stripe Customer Portal
       window.location.href = data.url;
-    } catch (err) {
+    } catch {
       setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
@@ -53,10 +53,10 @@ export function ManageBillingButton({
         onClick={handleClick}
         loading={loading}
         variant="outline"
-        iconLeft={<Receipt className="w-4 h-4" />}
+        iconLeft={<CreditCard className="w-4 h-4" />}
         iconRight={<ExternalLink className="w-4 h-4" />}
       >
-        Manage Billing
+        Update Payment Method
       </Button>
       {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
     </div>
