@@ -130,9 +130,12 @@ const checkoutHandler = withApiKey(async (req: NextRequest) => {
   const successBase = `${appUrl}/subscription/success`;
   const cancelBase = `${appUrl}/subscription`;
 
+  // {CHECKOUT_SESSION_ID} is a Stripe template literal — Stripe substitutes the
+  // real session ID before redirecting. The success page uses it to verify
+  // payment_status and show an error for blocked / declined cards.
   const successUrl = validatedReturnUrl
-    ? `${successBase}?returnUrl=${encodeURIComponent(validatedReturnUrl)}&appId=${encodeURIComponent(appId)}`
-    : successBase;
+    ? `${successBase}?session_id={CHECKOUT_SESSION_ID}&returnUrl=${encodeURIComponent(validatedReturnUrl)}&appId=${encodeURIComponent(appId)}`
+    : `${successBase}?session_id={CHECKOUT_SESSION_ID}`;
 
   const cancelUrl = validatedReturnUrl
     ? `${cancelBase}?returnUrl=${encodeURIComponent(validatedReturnUrl)}&appId=${encodeURIComponent(appId)}`
