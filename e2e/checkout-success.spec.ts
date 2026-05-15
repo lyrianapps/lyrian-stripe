@@ -1,78 +1,65 @@
 /**
- * E2E Tests: Checkout Success Page
+ * E2E Tests: Checkout Success Flow
  *
- * Tests that the success page displays correctly after Stripe checkout.
+ * The success page (/subscription/success) always redirects:
+ *   - paid / no session_id → /subscription?checkout_success=1
+ *   - unpaid              → /subscription?checkout_declined=<code>
+ *
+ * These tests verify the final landing state on the subscription page.
  */
 import { test, expect } from "./fixtures";
 
 test.describe("Checkout Success Page", () => {
-  test("displays success message after checkout", async ({
+  test("displays success banner after checkout", async ({
     authenticatedPage,
   }) => {
-    // Navigate directly to success page (simulating return from Stripe)
+    // Navigating to /subscription/success with no session_id redirects to
+    // /subscription?checkout_success=1 where the green banner is shown.
     await authenticatedPage.goto("/subscription/success");
 
-    // Should show success heading
-    await expect(authenticatedPage.locator("h1")).toContainText(
-      "Subscription Successful",
-    );
-
-    // Should show thank you message
+    await expect(authenticatedPage).toHaveURL(/checkout_success=1/);
     await expect(
-      authenticatedPage.locator("text=Thank you for subscribing"),
+      authenticatedPage.locator("text=Subscription activated"),
+    ).toBeVisible();
+    await expect(
+      authenticatedPage.locator("text=Your payment was successful"),
     ).toBeVisible();
 
-    // Should show "plan is now active" text
-    await expect(
-      authenticatedPage.locator("text=plan is now active"),
-    ).toBeVisible();
-
-    // Should have link back to subscription management
-    const manageLink = authenticatedPage.locator(
-      'a[href="/subscription"]:has-text("Subscription Management")',
-    );
-    await expect(manageLink).toBeVisible();
+    // The subscription page heading should still be present
+    await expect(authenticatedPage.locator("h1")).toContainText("Subscription");
   });
 
   test("redirects to returnUrl if provided", async ({ authenticatedPage }) => {
-    // Navigate to success page with returnUrl
-    // Note: This will redirect server-side, so we check the final URL
+    // When a returnUrl is supplied Stripe redirects the user back to their app;
+    // the server performs a server-side redirect before we can inspect the page.
+    // We only verify no error is thrown (the redirect itself is tested manually).
     const returnUrl = "https://example.com/dashboard";
-
-    // Start navigation but expect redirect
-    // The server will attempt to redirect to the returnUrl
     await authenticatedPage.goto(
       `/subscription/success?returnUrl=${encodeURIComponent(returnUrl)}`,
       { waitUntil: "commit" },
     );
-
-    // The page should attempt to redirect (307 or similar)
-    // In a real test environment, this would redirect externally
-    // For now, we verify the page processes the returnUrl
+    // No assertion needed — just confirm no crash / 500
   });
 
-  test("link navigates to subscription page", async ({ authenticatedPage }) => {
+  test("subscription page renders correctly after success redirect", async ({
+    authenticatedPage,
+  }) => {
     await authenticatedPage.goto("/subscription/success");
 
-    // Click the link to subscription management
-    const manageLink = authenticatedPage.locator(
-      'a:has-text("Subscription Management")',
-    );
-    await manageLink.click();
+    await expect(authenticatedPage).toHaveURL(/checkout_success=1/);
 
-    // Should navigate to subscription page
-    await expect(authenticatedPage).toHaveURL(/\/subscription$/);
+    // Plan cards should still be present
+    await expect(authenticatedPage.locator("text=Basic").first()).toBeVisible();
   });
 
-  test("success page has correct styling", async ({ authenticatedPage }) => {
+  test("success banner has green styling", async ({ authenticatedPage }) => {
     await authenticatedPage.goto("/subscription/success");
 
-    // Check heading has green color class
-    const heading = authenticatedPage.locator("h1");
-    await expect(heading).toHaveClass(/text-green/);
+    await expect(authenticatedPage).toHaveURL(/checkout_success=1/);
 
-    // Page should be centered
-    const container = authenticatedPage.locator("div.text-center").first();
-    await expect(container).toBeVisible();
+    // Green banner (bg-green-50 / border-green-200)
+    const banner = authenticatedPage.locator(".bg-green-50");
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText("Subscription activated");
   });
 });

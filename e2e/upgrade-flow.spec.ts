@@ -69,8 +69,9 @@ test.describe("Subscription Upgrade Flow", () => {
     // ── Step 3: Click Upgrade on the first plan (Basic) ───────────────────
     await upgradeButton.click();
 
-    // Wait for our intercepted redirect to the success page
-    await authenticatedPage.waitForURL("**/subscription/success", {
+    // The success page immediately redirects to /subscription?checkout_success=1
+    // so we wait for the final subscription page URL.
+    await authenticatedPage.waitForURL(/checkout_success=1/, {
       timeout: 10000,
     });
 
@@ -81,12 +82,12 @@ test.describe("Subscription Upgrade Flow", () => {
     // creates the subscription record. We replicate that DB write directly.
     await createTestSubscription(authenticatedPage, { plan: "basic" });
 
-    // ── Step 5: Verify success page content ──────────────────────────────
-    await expect(authenticatedPage.locator("h1")).toContainText(
-      "Subscription Successful",
-    );
+    // ── Step 5: Verify success banner on subscription page ────────────────
     await expect(
-      authenticatedPage.locator("text=Thank you for subscribing"),
+      authenticatedPage.locator("text=Subscription activated"),
+    ).toBeVisible();
+    await expect(
+      authenticatedPage.locator("text=Your payment was successful"),
     ).toBeVisible();
 
     // ── Step 6: Navigate back and verify upgraded plan ────────────────────
