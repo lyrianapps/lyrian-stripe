@@ -4,15 +4,15 @@
     "name": "Free Trial",
     "description": "Try it free",
     "price": 0,
-    "stripeProductId": "prod_TtGdCuu3IWpBFE",
-    "stripePriceId": "price_1SvU6RERKK3AcPrBo4G2TjOM"
+    "stripeProductId": "prod_UXLwtmIxhC0diq",
+    "stripePriceId": "price_1TYHEEERKK3AcPrBf485ceEB"
   },
   {
     "planKey": "basic",
     "name": "Basic",
     "description": "For individuals and small teams",
     "price": 1000,
-    "stripeProductId": "prod_TtGBIFRqp6ME5N",
-    "stripePriceId": "price_1SvTfXERKK3AcPrByHGOI37F"
+    "stripeProductId": "prod_UXLwuvfAzUAiFe",
+    "stripePriceId": "price_1TYHEUERKK3AcPrBvosMU6Uu"
   }
 ]
