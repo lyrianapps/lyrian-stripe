@@ -107,6 +107,9 @@ jobs:
         ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
         sleep 5
 
+        echo "🔄 Running database migrations..."
+        npx prisma migrate deploy
+
         echo "🌍 Environment: ${{ inputs.environment }}"
         echo "📝 Registering app: ${{ inputs.app_id }}"
         echo "📄 Using plans file: ${{ inputs.plans_file }}"
