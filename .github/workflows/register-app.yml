@@ -4,12 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment (development or stage)'
+        description: 'Environment (development, stage, or prod)'
         required: true
         type: choice
         options:
         - development
         - stage
+        - prod
       app_id:
         description: 'App ID (e.g., threads_app)'
         required: true
