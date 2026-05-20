@@ -11,6 +11,7 @@ const E2ESetupSchema = z.object({
   plan: z.enum(["free_trial", "basic", "pro"]).optional(),
   cancelAtPeriodEnd: z.boolean().optional(),
   hasFailedPayment: z.boolean().optional(),
+  duplicateCardDetected: z.boolean().optional(),
 });
 
 /**
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
     plan,
     cancelAtPeriodEnd = false,
     hasFailedPayment = false,
+    duplicateCardDetected = false,
   } = parsed.data;
 
   try {
@@ -103,7 +105,13 @@ export async function POST(req: NextRequest) {
           appId,
           externalUserId,
           stripeCustomerId: `cus_test_${randomBytes(8).toString("hex")}`,
+          duplicateCardDetected,
         },
+      });
+    } else if (duplicateCardDetected) {
+      customer = await prisma.billingCustomer.update({
+        where: { id: customer.id },
+        data: { duplicateCardDetected: true },
       });
     }
 

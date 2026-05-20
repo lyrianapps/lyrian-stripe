@@ -73,12 +73,14 @@ export async function createTestSubscription(
     plan?: string;
     cancelAtPeriodEnd?: boolean;
     hasFailedPayment?: boolean;
+    duplicateCardDetected?: boolean;
   } = {},
 ): Promise<void> {
   const {
     plan = "basic",
     cancelAtPeriodEnd = false,
     hasFailedPayment = false,
+    duplicateCardDetected = false,
   } = options;
 
   // Get stored user info for this page
@@ -99,6 +101,7 @@ export async function createTestSubscription(
         plan,
         cancelAtPeriodEnd,
         hasFailedPayment,
+        duplicateCardDetected,
       },
     },
   );

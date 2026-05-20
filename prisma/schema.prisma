@@ -107,6 +107,11 @@ model BillingCustomer {
   email            String?
   createdAt        DateTime @default(now())
 
+  // Set to true by the payment_method.attached webhook when a duplicate card is
+  // detected and silently removed. The subscription page reads-and-clears this
+  // flag to show the user a consistent "card already on file" banner.
+  duplicateCardDetected Boolean @default(false)
+
   subscriptions   Subscription[]
   billingSessions BillingSession[]
   paymentEvents   PaymentEvent[]

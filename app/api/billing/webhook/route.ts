@@ -1342,9 +1342,10 @@ async function handleInvoicePaymentSucceeded(
  * immediately detach the newly attached duplicate, keeping the original that is
  * likely already set as the subscription default.
  *
- * NOTE: Real-time user-facing messaging ("This card is already added") is not
- * possible within the Stripe-hosted portal. This webhook silently removes the
- * duplicate so it never persists on the customer's account.
+ * After detaching we set `duplicateCardDetected = true` on the BillingCustomer.
+ * The next time the user visits the subscription page that flag is read-and-cleared
+ * and a "card already on file" banner is shown — consistent with how checkout
+ * decline messages are surfaced.
  */
 async function handlePaymentMethodAttached(event: Stripe.Event): Promise<void> {
   const paymentMethod = event.data.object as Stripe.PaymentMethod;
@@ -1414,6 +1415,17 @@ async function handlePaymentMethodAttached(event: Stripe.Event): Promise<void> {
 
   logger.info(
     `[payment-method] Detached duplicate payment method ${paymentMethod.id}`,
+  );
+
+  // Flag the customer so the subscription page can surface a "card already on file"
+  // banner the next time they visit — mirrors how checkout decline messages are shown.
+  await prisma.billingCustomer.update({
+    where: { id: billingCustomer.id },
+    data: { duplicateCardDetected: true },
+  });
+
+  logger.info(
+    `[payment-method] Set duplicateCardDetected=true for customer ${billingCustomer.id}`,
   );
 }
 

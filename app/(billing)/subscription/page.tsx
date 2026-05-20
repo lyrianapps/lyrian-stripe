@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { Heading } from "@/app/components/Heading";
 import { Paragraph } from "@/app/components/Paragraph";
+import { NoticeBanner } from "@/app/components/NoticeBanner";
 import SubscriptionPlans from "@/app/components/SubscriptionPlans";
 import { RemainingMinutesClient } from "@/app/components/RemainingMinutesClient";
 import { UpdatePaymentMethodButton } from "@/app/components/ManageBillingButton";
@@ -12,6 +13,7 @@ import { PaymentWarningBanner } from "@/app/components/PaymentWarningBanner";
 
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { resolveNoticeBanners } from "@/lib/utils/banners";
 import { AppPlan } from "@/lib/utils/types";
 
 export default async function SubscriptionPage({
@@ -25,8 +27,6 @@ export default async function SubscriptionPage({
   if (!sessionToken) redirect("/unauthorized");
 
   const session = await getSession(sessionToken);
-
-  console.log("session", session);
 
   if (!session) redirect("/unauthorized");
 
@@ -88,26 +88,27 @@ export default async function SubscriptionPage({
     : (resolvedSearchParams.checkout_declined as string | undefined);
   const checkoutSuccess = Boolean(resolvedSearchParams.checkout_success);
 
-  const declineMessages: Record<string, { title: string; body: string }> = {
-    lost_card: {
-      title: "Card reported lost",
-      body: "Your card has been reported as lost. No charge was made and no subscription was created. Please use a different card.",
-    },
-    stolen_card: {
-      title: "Card reported stolen",
-      body: "Your card has been reported as stolen. No charge was made and no subscription was created. Please use a different card.",
-    },
-    fraudulent: {
-      title: "Transaction flagged",
-      body: "This transaction was flagged as suspicious and was not processed. No charge was made and no subscription was created. Please use a different card or contact your bank.",
-    },
-  };
-  const declineBanner = checkoutDeclinedCode
-    ? (declineMessages[checkoutDeclinedCode] ?? {
-        title: "Card declined",
-        body: "Your card was declined or flagged. No charge was made and no subscription was created. Please try a different card.",
-      })
-    : null;
+  // Atomically read-and-clear the duplicate card flag so the banner shows once.
+  const duplicateCardDetected = await prisma.$transaction(async (tx) => {
+    const customer = await tx.billingCustomer.findUnique({
+      where: { id: session.billingCustomerId },
+      select: { duplicateCardDetected: true },
+    });
+    const detected = customer?.duplicateCardDetected ?? false;
+    if (detected) {
+      await tx.billingCustomer.update({
+        where: { id: session.billingCustomerId },
+        data: { duplicateCardDetected: false },
+      });
+    }
+    return detected;
+  });
+
+  const noticeBanners = resolveNoticeBanners({
+    checkoutDeclinedCode,
+    checkoutSuccess,
+    duplicateCardDetected,
+  });
 
   const isDevApp = Boolean(
     session?.appId && String(session.appId).startsWith("dev"),
@@ -136,21 +137,9 @@ export default async function SubscriptionPage({
         <CreditCard className="w-7 h-7 text-blue-600" /> Subscription
       </Heading>
 
-      {declineBanner && (
-        <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-4 text-red-800">
-          <div className="font-semibold">{declineBanner.title}</div>
-          <p className="text-sm mt-1">{declineBanner.body}</p>
-        </div>
-      )}
-
-      {checkoutSuccess && (
-        <div className="mb-4 rounded-md bg-green-50 border border-green-200 p-4 text-green-800">
-          <div className="font-semibold">Subscription activated</div>
-          <p className="text-sm mt-1">
-            Your payment was successful and your subscription is now active.
-          </p>
-        </div>
-      )}
+      {noticeBanners.map((banner, i) => (
+        <NoticeBanner key={i} {...banner} />
+      ))}
 
       {hasFailedPayments && <PaymentWarningBanner returnUrl={returnUrl} />}
 
