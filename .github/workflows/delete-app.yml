@@ -1,0 +1,99 @@
+name: Delete App
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment (development, stage, or prod)'
+        required: true
+        type: choice
+        options:
+        - development
+        - stage
+        - prod
+      app_id:
+        description: 'App ID to delete (e.g., threads_app)'
+        required: true
+        type: string
+      confirm_app_id:
+        description: 'Type the App ID again to confirm deletion. Must match exactly.'
+        required: true
+        type: string
+      dry_run:
+        description: 'Dry run — show what would be deleted without actually deleting'
+        required: true
+        type: boolean
+        default: true
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+
+jobs:
+  delete-app:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    # Only the repository owner may run this workflow.
+    # GitHub evaluates this before allocating a runner — the job never starts for anyone else.
+    if: github.actor == github.repository_owner
+
+    steps:
+    - name: Verify actor is repo owner
+      run: |
+        if [ "${{ github.actor }}" != "${{ github.repository_owner }}" ]; then
+          echo "❌ Unauthorized: only the repository owner can run this workflow."
+          exit 1
+        fi
+        echo "✅ Actor verified: ${{ github.actor }}"
+
+    - name: Verify confirmation
+      run: |
+        if [ "${{ inputs.app_id }}" != "${{ inputs.confirm_app_id }}" ]; then
+          echo "❌ Confirmation mismatch."
+          echo "   app_id:         '${{ inputs.app_id }}'"
+          echo "   confirm_app_id: '${{ inputs.confirm_app_id }}'"
+          echo ""
+          echo "   Both fields must match exactly to proceed."
+          exit 1
+        fi
+        echo "✅ App ID confirmed: ${{ inputs.app_id }}"
+
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: "yarn"
+
+    - name: Install dependencies
+      run: yarn install --frozen-lockfile
+
+    - name: Generate Prisma Client
+      run: npx prisma generate
+
+    - name: Google Auth
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Install Cloud SQL Auth Proxy
+      run: |
+        curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.3/cloud-sql-proxy.linux.amd64
+        chmod +x cloud-sql-proxy
+
+    - name: Run delete-app script
+      env:
+        DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
+        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
+      run: |
+        ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
+        sleep 5
+
+        if [ "${{ inputs.dry_run }}" = "true" ]; then
+          echo "🔍 DRY RUN — no data will be deleted"
+          npx tsx scripts/delete-app.ts "${{ inputs.app_id }}"
+        else
+          echo "🗑️  LIVE DELETE — permanently removing app and all associated data"
+          npx tsx scripts/delete-app.ts "${{ inputs.app_id }}" --confirm
+        fi
