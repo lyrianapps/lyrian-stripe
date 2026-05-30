@@ -34,13 +34,22 @@ vi.mock("@/env", () => ({
 }));
 
 // Mock logger
-vi.mock("@/app/middleware/logger", () => ({
-  logger: {
+vi.mock("@/app/middleware/logger", () => {
+  const child = vi.fn(() => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
-  },
-}));
+    child,
+  }));
+  return {
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child,
+    },
+  };
+});
 
 import { sendSubscriptionEmail, previewEmail, EmailContext } from "@/lib/email";
 

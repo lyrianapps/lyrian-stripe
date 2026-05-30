@@ -6,8 +6,10 @@ import {
   JWTTokenSchema,
   JWTPayloadSchema,
 } from "./schemas";
-import { logError } from "@/app/middleware/logger";
+import { logger } from "@/app/middleware/logger";
 import { env } from "@/env";
+
+const log = logger.child({ module: "session" });
 
 const JWT_SECRET = env.SAAS_JWT_SECRET;
 
@@ -103,13 +105,13 @@ export async function getSession(sessionId: string): Promise<{
     });
 
     if (!session) {
-      logError("Session not found!");
+      log.error("Session not found!");
       throw new Error("Session not found");
     }
 
     // Expired?
     if (session.expiresAt < new Date()) {
-      logError("Session Expired");
+      log.error("Session Expired");
       throw new Error("Session expired");
     }
 
@@ -128,7 +130,7 @@ export async function getSession(sessionId: string): Promise<{
 
     return payload;
   } catch (err) {
-    logError(err, "getSession");
+    log.error({ err }, "getSession");
     return null;
   }
 }

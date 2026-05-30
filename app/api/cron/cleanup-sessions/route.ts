@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { logger, logError } from "@/app/middleware/logger";
+import { logger as _logger } from "@/app/middleware/logger";
 import { env } from "@/env";
+
+const logger = _logger.child({ route: "POST /api/cron/cleanup-sessions" });
 
 /**
  * Cleanup expired billing sessions
@@ -36,7 +38,7 @@ export async function POST(request: NextRequest) {
       timestamp: now.toISOString(),
     });
   } catch (error: unknown) {
-    logError(error, "Cron: cleanup-sessions failed");
+    logger.error({ err: error }, "Cron: cleanup-sessions failed");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

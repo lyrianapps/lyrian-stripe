@@ -1,8 +1,10 @@
-import { logError } from "@/app/middleware/logger";
+import { logger } from "@/app/middleware/logger";
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, verifyJWT } from "@/lib/session";
 import { checkRateLimit } from "@/lib/middleware/rateLimit";
 import { getPortalIdentifier } from "@/lib/rateLimit";
+
+const log = logger.child({ route: "GET /api/billing/portal" });
 
 export async function GET(req: NextRequest) {
   // ✅ Always use explicit base URL (Cloud Run safe)
@@ -76,7 +78,7 @@ export async function GET(req: NextRequest) {
 
     return response;
   } catch (err) {
-    logError(err, "billing/portal GET");
+    log.error({ err }, "billing/portal GET");
     return NextResponse.redirect(`${origin}/unauthorized`);
   }
 }

@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { randomBytes } from "crypto";
 import { z } from "zod";
-import { logError } from "@/app/middleware/logger";
+import { logger } from "@/app/middleware/logger";
 import { Plan, PaymentEventType } from "@/lib/generated/prisma/enums";
+
+const log = logger.child({ route: "POST /api/dev/e2e-setup" });
 
 const E2ESetupSchema = z.object({
   appId: z.string().min(1),
@@ -174,7 +176,7 @@ export async function POST(req: NextRequest) {
       subscriptionId: subscription?.id,
     });
   } catch (error) {
-    logError(error, "e2e-setup");
+    log.error({ err: error }, "e2e-setup");
     return NextResponse.json(
       { error: "Failed to setup test data" },
       { status: 500 },

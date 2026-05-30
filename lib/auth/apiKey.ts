@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
-import { logError } from "@/app/middleware/logger";
+import { logger } from "@/app/middleware/logger";
+
+const log = logger.child({ module: "apiKey" });
 
 export type ApiKeyValidationResult =
   | { valid: true; appId: string }
@@ -58,7 +60,7 @@ export function withApiKey(handler: ProtectedRouteHandler) {
       try {
         return await handler(req, { appId: apiKeyResult.appId });
       } catch (error) {
-        logError(error, "Protected route error");
+        log.error({ err: error }, "Protected route error");
         return NextResponse.json(
           { error: "Internal server error" },
           { status: 500 },
@@ -72,7 +74,7 @@ export function withApiKey(handler: ProtectedRouteHandler) {
       try {
         return await handler(req, { appId: sessionResult.appId });
       } catch (error) {
-        logError(error, "Protected route error");
+        log.error({ err: error }, "Protected route error");
         return NextResponse.json(
           { error: "Internal server error" },
           { status: 500 },

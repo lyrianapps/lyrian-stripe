@@ -1,6 +1,8 @@
 import { Resend } from "resend";
-import { logger } from "@/app/middleware/logger";
+import { logger as _logger } from "@/app/middleware/logger";
 import { env } from "@/env";
+
+const logger = _logger.child({ module: "email" });
 
 // Lazy initialization for the global (fallback) client
 let globalResendClient: Resend | null = null;
@@ -95,7 +97,7 @@ export async function sendSubscriptionEmail(
     logger.info(`[email] Sent ${eventType} email to ${context.to}`);
     return true;
   } catch (error) {
-    logger.error(`[email] Error sending ${eventType} email:`, error);
+    logger.error({ err: error }, `[email] Error sending ${eventType} email`);
     return false;
   }
 }

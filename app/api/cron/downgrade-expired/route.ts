@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { logError } from "@/app/middleware/logger";
+import { logger } from "@/app/middleware/logger";
 import { env } from "@/env";
 import {
   processExpiredSubscriptions,
   syncAllSubscriptionsWithStripe,
 } from "@/lib/services/expirationService";
+
+const log = logger.child({ route: "POST /api/cron/downgrade-expired" });
 
 /**
  * Downgrade expired subscriptions
@@ -43,7 +45,7 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
   } catch (error: unknown) {
-    logError(error, "Cron: downgrade-expired failed");
+    log.error({ err: error }, "Cron: downgrade-expired failed");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

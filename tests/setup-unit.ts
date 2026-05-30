@@ -16,12 +16,22 @@ vi.mock("@/env", () => ({
 }));
 
 // Mock logger to prevent console noise
-vi.mock("@/app/middleware/logger", () => ({
-  logger: {
+vi.mock("@/app/middleware/logger", () => {
+  const child = vi.fn(() => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
-  },
-  logError: vi.fn(),
-}));
+    child,
+  }));
+  return {
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      child,
+    },
+    logError: vi.fn(),
+  };
+});

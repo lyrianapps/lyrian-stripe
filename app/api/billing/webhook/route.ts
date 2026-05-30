@@ -4,7 +4,7 @@ import Stripe from "stripe";
 import { getStripeForApp, getWebhookSecretForApp } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { Plan, SubscriptionStatus } from "@/lib/generated/prisma/enums";
-import { logger, logError } from "@/app/middleware/logger";
+import { logger as _logger } from "@/app/middleware/logger";
 import { checkRateLimit } from "@/lib/middleware/rateLimit";
 import { sendSubscriptionEmail } from "@/lib/email";
 import {
@@ -18,6 +18,8 @@ import {
   InvoicePipelineData,
   WebhookHandler,
 } from "./types";
+
+const logger = _logger.child({ route: "POST /api/billing/webhook" });
 
 const PLAN_HIERARCHY: readonly Plan[] = ["free_trial", "basic", "pro"] as const;
 
@@ -68,12 +70,12 @@ async function runPipeline<TIn, TOut>(
     try {
       current = await steps[i](current);
     } catch (err) {
-      logError(err, `pipeline/step-${i}`);
+      logger.error({ err }, `pipeline/step-${i}`);
       throw err;
     }
   }
 
-  // Log all accumulated messages using winston logger
+  // Log all accumulated messages
   current.logs.forEach((msg) => {
     if (msg.startsWith("[HALT]")) {
       logger.warn(`[webhook] ${msg}`);
@@ -1137,19 +1139,22 @@ const invoiceFailedSteps = {
 
     // Log details that could be used for notifications
     // In a real system, you'd send an email or webhook here
-    logger.warn(`[invoice] PAYMENT FAILED - Action required`, {
-      customerId: billingCustomer?.id,
-      email: billingCustomer?.email,
-      appId: billingCustomer?.appId,
-      externalUserId: billingCustomer?.externalUserId,
-      invoiceId: invoice.id,
-      amount: invoice.amount_due,
-      currency: invoice.currency,
-      attemptCount: failureInfo?.attemptCount,
-      nextRetryAt: failureInfo?.nextRetryAt?.toISOString(),
-      failureCode: failureInfo?.code,
-      failureMessage: failureInfo?.message,
-    });
+    logger.warn(
+      {
+        customerId: billingCustomer?.id,
+        email: billingCustomer?.email,
+        appId: billingCustomer?.appId,
+        externalUserId: billingCustomer?.externalUserId,
+        invoiceId: invoice.id,
+        amount: invoice.amount_due,
+        currency: invoice.currency,
+        attemptCount: failureInfo?.attemptCount,
+        nextRetryAt: failureInfo?.nextRetryAt?.toISOString(),
+        failureCode: failureInfo?.code,
+        failureMessage: failureInfo?.message,
+      },
+      "[invoice] PAYMENT FAILED - Action required",
+    );
 
     return log(
       ctx,
@@ -1514,7 +1519,7 @@ export async function POST(req: NextRequest) {
       getWebhookSecretForApp(),
     );
   } catch (err) {
-    logError(err, "webhook/signature-verification");
+    logger.error({ err }, "webhook/signature-verification");
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -1542,7 +1547,7 @@ export async function POST(req: NextRequest) {
       `[webhook] Successfully processed: ${event.type} (${event.id})`,
     );
   } catch (err) {
-    logError(err, `webhook/${event.type}`);
+    logger.error({ err }, `webhook/${event.type}`);
     return NextResponse.json(
       { error: "Webhook processing failed" },
       { status: 500 },

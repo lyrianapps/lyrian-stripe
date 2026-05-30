@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getStripeForApp } from "@/lib/stripe";
 import { withApiKey } from "@/lib/auth/apiKey";
-import { logError } from "@/app/middleware/logger";
+import { logger } from "@/app/middleware/logger";
 import { getKnownErrorResponse } from "@/lib/utils/errorHandlers";
 import { z } from "zod";
 import { withRateLimit } from "@/lib/middleware/rateLimit";
 import { sendSubscriptionEmail } from "@/lib/email";
+
+const log = logger.child({ route: "POST /api/billing/cancel" });
 
 const CancelRequestSchema = z.object({
   appId: z.string().min(1),
@@ -178,7 +180,7 @@ const cancelHandler = withApiKey(async (req: NextRequest) => {
       currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
     });
   } catch (err) {
-    logError(err, "billing/cancel");
+    log.error({ err }, "billing/cancel");
 
     const known = getKnownErrorResponse(err);
     if (known) {

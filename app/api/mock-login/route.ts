@@ -1,7 +1,9 @@
-import { logError } from "@/app/middleware/logger";
+import { logger } from "@/app/middleware/logger";
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { env } from "@/env";
+
+const log = logger.child({ route: "GET /api/mock-login" });
 
 const JWT_SECRET = env.SAAS_JWT_SECRET;
 
@@ -29,7 +31,7 @@ export async function GET(request: Request) {
     const redirectUrl = `${origin}/api/billing/portal?token=${token}`;
     return NextResponse.redirect(redirectUrl);
   } catch (err) {
-    logError(err, "mock-login GET");
+    log.error({ err }, "mock-login GET");
     console.log("err", err);
     return NextResponse.json(
       { error: "Internal server error" },

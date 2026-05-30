@@ -1,10 +1,12 @@
 import Stripe from "stripe";
 import { getStripeForApp } from "@/lib/stripe";
-import { logger, logError } from "@/app/middleware/logger";
+import { logger as _logger } from "@/app/middleware/logger";
 import {
   downgradeSubscription,
   updateSubscriptionPeriod,
 } from "@/lib/services/subscription";
+
+const logger = _logger.child({ module: "subscriptionChecker" });
 
 export type SubscriptionCheckResult = {
   action: "downgraded" | "renewed" | "pending" | "error";
@@ -75,8 +77,8 @@ export class StripeSubscriptionChecker implements SubscriptionChecker {
         };
       }
 
-      logError(
-        error,
+      logger.error(
+        { err: error },
         `Failed to check Stripe for subscription ${subscription.id}`,
       );
       return { action: "error", reason: "stripe_api_error" };

@@ -1,7 +1,9 @@
-import { logError } from "@/app/middleware/logger";
+import { logger } from "@/app/middleware/logger";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
 import { env } from "@/env";
+
+const log = logger.child({ route: "GET /api/db-health-check" });
 
 export async function GET(request: NextRequest) {
   // Require cron secret to prevent public access
@@ -17,7 +19,7 @@ export async function GET(request: NextRequest) {
       message: "Database connection healthy.",
     });
   } catch (error) {
-    logError(error, "db-health-check GET");
+    log.error({ err: error }, "db-health-check GET");
     return NextResponse.json(
       {
         status: "error",

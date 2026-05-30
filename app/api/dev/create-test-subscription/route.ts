@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { randomBytes } from "crypto";
 import { z } from "zod";
-import { logError } from "@/app/middleware/logger";
+import { logger } from "@/app/middleware/logger";
 import { PaymentEventType } from "@/lib/generated/prisma/enums";
+
+const log = logger.child({ route: "POST /api/dev/create-test-subscription" });
 
 const DevCreateSchema = z.object({
   appId: z.string().min(1),
@@ -120,7 +122,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    logError(err, "dev/create-test-subscription");
+    log.error({ err }, "dev/create-test-subscription");
     return NextResponse.json(
       { error: "Failed to create test subscription" },
       { status: 500 },

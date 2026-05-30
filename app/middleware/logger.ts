@@ -1,24 +1,40 @@
-import winston from "winston";
+import pino from "pino";
 
-export const logger = winston.createLogger({
-  level: "info",
-  format: winston.format.combine(
-    winston.format.colorize(),
-    winston.format.timestamp(),
-    winston.format.printf(({ timestamp, level, message }) => {
-      return `[${timestamp}] ${level}: ${message}`;
-    }),
-  ),
-  transports: [new winston.transports.Console()],
-});
+export const logger = pino(
+  {
+    level:
+      process.env.LOG_LEVEL ??
+      (process.env.NODE_ENV === "production" ? "info" : "debug"),
+    base: { service: "lyrian-stripe" },
+    timestamp: pino.stdTimeFunctions.isoTime,
+    redact: {
+      paths: [
+        "*.password",
+        "*.apiKey",
+        "*.stripeSecretKey",
+        "*.stripePublishableKey",
+        "*.stripeWebhookSecret",
+        "*.resendApiKey",
+      ],
+      censor: "[redacted]",
+    },
+  },
+  process.env.NODE_ENV !== "production"
+    ? pino.transport({ target: "pino-pretty", options: { colorize: true } })
+    : undefined,
+);
 
 export function logError(error: unknown, context?: string) {
   if (error instanceof Error) {
     logger.error(
-      `${context ? `[${context}] ` : ""}${error.message}\n${error.stack}`,
+      { err: error, context },
+      `${context ? `[${context}] ` : ""}${error.message}`,
     );
   } else {
-    logger.error(`${context ? `[${context}] ` : ""}${String(error)}`);
+    logger.error(
+      { context },
+      `${context ? `[${context}] ` : ""}${String(error)}`,
+    );
   }
 }
 

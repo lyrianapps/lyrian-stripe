@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { logger } from "@/app/middleware/logger";
+import { logger as _logger } from "@/app/middleware/logger";
+
+const logger = _logger.child({ module: "subscription" });
 
 /**
  * Downgrade a subscription to free_trial

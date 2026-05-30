@@ -19,10 +19,18 @@ enum Plan {
   free_trial
   basic
   pro
+  paygo
+  volume
 }
 
 enum BillingInterval {
   month
+}
+
+enum BillingType {
+  flat_rate
+  metered
+  volume
 }
 
 enum SubscriptionEventType {
@@ -87,6 +95,18 @@ model AppPlan {
   // Soft delete / disable
   isActive Boolean @default(true)
 
+  // Billing type — drives how customers are charged
+  billingType          BillingType @default(flat_rate)
+  // Cents per unit (required for metered and volume plans)
+  unitAmount           Int?
+  // Hard monthly unit cap enforced at the API level (e.g. 500 for a free tier)
+  freeUnitsPerMonth    Int?
+  // Minimum monthly units required (volume commitment plans)
+  minMonthlyUnits      Int?
+  // Stripe Billing Meter event name for metered/volume plans (e.g. "verifications")
+  // Must match a meter created in the app's Stripe account
+  stripeMeterEventName String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -115,6 +135,7 @@ model BillingCustomer {
   subscriptions   Subscription[]
   billingSessions BillingSession[]
   paymentEvents   PaymentEvent[]
+  monthlyUsages   MonthlyUsage[]
 
   @@unique([appId, externalUserId], name: "appId_externalUserId")
 }
@@ -151,9 +172,11 @@ model Subscription {
   id                String @id @default(cuid())
   billingCustomerId String
 
-  stripeSubscriptionId String @unique
-  stripePriceId        String
-  stripeProductId      String
+  stripeSubscriptionId     String  @unique
+  stripePriceId            String
+  stripeProductId          String
+  // Stripe subscription item ID (si_...) — required for reporting metered usage records
+  stripeSubscriptionItemId String?
 
   plan   Plan
   status SubscriptionStatus
@@ -219,11 +242,27 @@ enum PaymentEventType {
   payment_action_required
 }
 
+// Tracks unit usage per customer per calendar month.
+// Used to enforce free-tier caps and to back-fill Stripe metered usage records.
+// "unit" is intentionally generic — the SaaS app decides what counts as one unit
+// (a verification, an API call, a processed minute, etc.).
+model MonthlyUsage {
+  id                String   @id @default(cuid())
+  billingCustomerId String
+  appId             String
+  // Calendar-month bucket in "YYYY-MM" format (e.g. "2026-05")
+  yearMonth         String
+  unitCount         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  billingCustomer BillingCustomer @relation(fields: [billingCustomerId], references: [id])
+
+  @@unique([billingCustomerId, yearMonth])
+  @@index([appId, yearMonth])
+}
+
 model StripeEvent {
-  /**
-   * Stripe event ID (evt_*)
-   * Used for idempotency
-   */
   id   String @id
   type String
 

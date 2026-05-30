@@ -3,7 +3,9 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { getStripeForApp } from "@/lib/stripe";
 import { getSession } from "@/lib/session";
-import { logError } from "@/app/middleware/logger";
+import { logger } from "@/app/middleware/logger";
+
+const log = logger.child({ route: "POST /api/billing/stripe-portal" });
 
 /**
  * POST /api/billing/stripe-portal
@@ -122,7 +124,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ url: portalSession.url });
   } catch (err) {
-    logError(err, "billing/stripe-portal POST");
+    log.error({ err }, "billing/stripe-portal POST");
     return NextResponse.json(
       { error: "Failed to create portal session" },
       { status: 500 },

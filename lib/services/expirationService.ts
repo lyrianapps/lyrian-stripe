@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
-import { logger } from "@/app/middleware/logger";
+import { logger as _logger } from "@/app/middleware/logger";
 import {
   createSubscriptionCheckerChain,
   SubscriptionCandidate,
   SubscriptionCheckResult,
 } from "@/lib/services/subscriptionChecker";
+
+const logger = _logger.child({ module: "expirationService" });
 
 export type DowngradeResults = {
   checked: number;

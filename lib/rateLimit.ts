@@ -119,6 +119,9 @@ export const rateLimiters = {
 
   // Cron jobs - should be rare: 10 req/min
   cron: createRateLimiter("cron", 10, 60),
+
+  // Usage reporting — server-to-server from SaaS app: 600 req/min per key
+  usage: createRateLimiter("usage", 600, 60),
 };
 
 export type RateLimiterKey = keyof typeof rateLimiters;

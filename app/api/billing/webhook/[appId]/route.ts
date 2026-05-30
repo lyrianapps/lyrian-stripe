@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
-import { logger, logError } from "@/app/middleware/logger";
+import { logger as _logger } from "@/app/middleware/logger";
 import { checkRateLimit } from "@/lib/middleware/rateLimit";
 import { getStripeForApp, getWebhookSecretForApp } from "@/lib/stripe";
 
@@ -13,6 +13,8 @@ import {
   recordEventReceived,
   markEventProcessed,
 } from "../route";
+
+const logger = _logger.child({ route: "POST /api/billing/webhook/[appId]" });
 
 /** Per-app webhook endpoint: POST /api/billing/webhook/:appId */
 export async function POST(
@@ -62,7 +64,7 @@ export async function POST(
       webhookSecret,
     );
   } catch (err) {
-    logError(err, "webhook/signature-verification");
+    logger.error({ err }, "webhook/signature-verification");
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -90,7 +92,7 @@ export async function POST(
       `[webhook:${appId}] Successfully processed: ${event.type} (${event.id})`,
     );
   } catch (err) {
-    logError(err, `webhook/${appId}/${event.type}`);
+    logger.error({ err }, `webhook/${appId}/${event.type}`);
     return NextResponse.json(
       { error: "Webhook processing failed" },
       { status: 500 },
