@@ -33,6 +33,8 @@ export async function GET(
           price: true,
           currency: true,
           interval: true,
+          billingType: true,
+          freeUnitsPerMonth: true,
           stripePriceId: true,
         },
       },

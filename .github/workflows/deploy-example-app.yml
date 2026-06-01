@@ -1,0 +1,102 @@
+name: Deploy Example App to Cloud Run
+
+on:
+  push:
+    branches: [ develop ]
+    paths:
+    - "example-app/**"
+    - ".github/workflows/deploy-example-app.yml"
+  workflow_dispatch:
+
+
+env:
+  REGION: us-central1
+  SERVICE_NAME: lyrian-example-app
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    environment: demo
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Google Auth
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Configure Docker
+      run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+    - name: Build and Push Container
+      working-directory: example-app
+      run: |
+        docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
+        docker push ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy ${{ env.SERVICE_NAME }} \
+          --image ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+          --region ${{ env.REGION }} \
+          --platform managed \
+          --allow-unauthenticated \
+          --min-instances=0 \
+          --max-instances=3 \
+          --memory=512Mi \
+          --cpu=1 \
+          --timeout=30 \
+          --port=3001 \
+          --set-env-vars "NODE_ENV=production" \
+          --set-secrets "DATABASE_URL=EXAMPLE_APP_DATABASE_URL:latest,BILLING_API_URL=EXAMPLE_APP_BILLING_API_URL:latest,BILLING_API_KEY=EXAMPLE_APP_BILLING_API_KEY:latest,BILLING_APP_ID=EXAMPLE_APP_BILLING_APP_ID:latest,SAAS_JWT_SECRET=EXAMPLE_APP_SAAS_JWT_SECRET:latest,TEST_USER_ID=EXAMPLE_APP_TEST_USER_ID:latest,TEST_USER_ID_PAYGO=EXAMPLE_APP_TEST_USER_ID_PAYGO:latest,TEST_USER_EMAIL=EXAMPLE_APP_TEST_USER_EMAIL:latest,APP_URL=EXAMPLE_APP_PUBLIC_URL:latest"
+
+    - name: Show service URL
+      run: |
+        gcloud run services describe ${{ env.SERVICE_NAME }} \
+          --region ${{ env.REGION }} \
+          --format "value(status.url)"
+
+  migrate:
+    runs-on: ubuntu-latest
+    needs: build-and-deploy
+    environment: demo
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+
+    - name: Install dependencies
+      working-directory: example-app
+      run: npm ci --ignore-scripts
+
+    - name: Google Auth
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Install Cloud SQL Auth Proxy
+      run: |
+        curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.3/cloud-sql-proxy.linux.amd64
+        chmod +x cloud-sql-proxy
+
+    - name: Run Prisma Migrations
+      working-directory: example-app
+      env:
+        DATABASE_URL: ${{ secrets.EXAMPLE_APP_DB_MIGRATE_URL }}
+      run: |
+        ./cloud-sql-proxy ${{ secrets.EXAMPLE_APP_CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
+        sleep 5
+        npx prisma migrate deploy
