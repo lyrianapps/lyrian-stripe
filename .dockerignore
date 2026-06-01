@@ -1,3 +1,6 @@
+# Example app (has its own separate build)
+example-app
+
 # Dependencies
 node_modules
 .pnp
