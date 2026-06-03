@@ -15,6 +15,17 @@ COPY . .
 # Generate Prisma client (DATABASE_URL not needed at build time for this step)
 RUN npx prisma generate
 
+# Build-time env vars (dummy values for validation, real values injected at runtime)
+ARG BILLING_API_URL="https://placeholder.example.com"
+ARG BILLING_API_KEY="placeholder_api_key"
+ARG BILLING_APP_ID="placeholder_app_id"
+ARG SAAS_JWT_SECRET="placeholder_jwt_secret_for_build"
+
+ENV BILLING_API_URL=$BILLING_API_URL
+ENV BILLING_API_KEY=$BILLING_API_KEY
+ENV BILLING_APP_ID=$BILLING_APP_ID
+ENV SAAS_JWT_SECRET=$SAAS_JWT_SECRET
+
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN yarn build
 
