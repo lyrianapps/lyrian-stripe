@@ -95,8 +95,8 @@ jobs:
     - name: Run Prisma Migrations
       working-directory: example-app
       env:
-        DATABASE_URL: ${{ secrets.EXAMPLE_APP_DB_MIGRATE_URL }}
+        DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
       run: |
-        ./cloud-sql-proxy ${{ secrets.EXAMPLE_APP_CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
+        ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
         sleep 5
         npx prisma migrate deploy
