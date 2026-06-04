@@ -89,6 +89,7 @@ jobs:
       run: |
         ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
         sleep 5
+        npx prisma migrate deploy
 
         if [ "${{ inputs.dry_run }}" = "true" ]; then
           echo "🔍 DRY RUN — no data will be deleted"
