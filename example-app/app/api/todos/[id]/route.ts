@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { env } from "@/lib/env";
+import { getSession } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 
 const logPatch = logger.child({ route: "PATCH /api/todos/[id]" });
 const logDelete = logger.child({ route: "DELETE /api/todos/[id]" });
-const USER_ID = env.TEST_USER_ID;
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(_req: NextRequest, { params }: Params) {
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
 
   const existing = await prisma.todo.findFirst({
-    where: { id, userId: USER_ID },
+    where: { id, userId: session.userId },
   });
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -29,10 +31,13 @@ export async function PATCH(_req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
 
   const existing = await prisma.todo.findFirst({
-    where: { id, userId: USER_ID },
+    where: { id, userId: session.userId },
   });
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });

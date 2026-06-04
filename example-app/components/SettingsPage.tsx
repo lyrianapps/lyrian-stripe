@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { DemoMode } from "@/lib/demoMode";
 
 interface SubscriptionStatus {
   plan: string | null;
@@ -26,29 +25,6 @@ interface PlanOption {
   billingType: string;
   cap: number | null;
   priceId: string | null;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Mode banner
-// ─────────────────────────────────────────────────────────────────────────────
-
-function ModeBanner({ demoMode }: { demoMode: DemoMode }) {
-  if (demoMode === "paygo") {
-    return (
-      <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
-        <span className="font-semibold">Pay as You Go demo</span> — usage is
-        metered per todo. Stripe fires a billing meter event on every creation
-        and invoices at period end. No monthly cap.
-      </div>
-    );
-  }
-  return (
-    <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-      <span className="font-semibold">Subscription demo</span> — users are on a
-      flat-rate or free-trial plan with a monthly todo cap. Upgrade to remove
-      the cap.
-    </div>
-  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -114,7 +90,7 @@ function PlanCard({
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function SettingsPage({ demoMode }: { demoMode: DemoMode }) {
+export function SettingsPage() {
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [plans, setPlans] = useState<PlanOption[]>([]);
@@ -140,7 +116,7 @@ export function SettingsPage({ demoMode }: { demoMode: DemoMode }) {
         },
       )
       .finally(() => setLoading(false));
-  }, [demoMode]);
+  }, []);
 
   async function handleUpgrade(priceId: string) {
     setUpgrading(true);
@@ -193,8 +169,6 @@ export function SettingsPage({ demoMode }: { demoMode: DemoMode }) {
 
   return (
     <div className="space-y-6">
-      <ModeBanner demoMode={demoMode} />
-
       {/* ── Current plan card ────────────────────────────────────────────────────────── */}
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <h2 className="text-base font-semibold text-gray-900 mb-4">

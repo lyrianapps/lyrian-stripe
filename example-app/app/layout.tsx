@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getDemoMode } from "@/lib/demoMode";
-import { DemoModeSwitcher } from "@/components/DemoModeSwitcher";
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth";
+import { LogoutButton } from "@/components/LogoutButton";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,7 +16,11 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const demoMode = await getDemoMode();
+  const session = await getSession();
+  const isLoginPage =
+    typeof globalThis !== "undefined" &&
+    (globalThis as Record<string, unknown>).__NEXT_PRIVATE_ORIGIN === undefined;
+
   return (
     <html lang="en">
       <body className="min-h-screen bg-gray-50 text-gray-900 antialiased">
@@ -27,23 +32,28 @@ export default async function RootLayout({
             >
               TodoApp
             </Link>
-            <div className="flex items-center gap-4">
-              <DemoModeSwitcher current={demoMode} />
-              <nav className="flex gap-5 text-sm">
-                <Link
-                  href="/"
-                  className="text-gray-500 hover:text-gray-900 transition-colors"
-                >
-                  Todos
-                </Link>
-                <Link
-                  href="/settings"
-                  className="text-gray-500 hover:text-gray-900 transition-colors"
-                >
-                  Settings
-                </Link>
-              </nav>
-            </div>
+            {session && (
+              <div className="flex items-center gap-4">
+                <nav className="flex gap-5 text-sm">
+                  <Link
+                    href="/"
+                    className="text-gray-500 hover:text-gray-900 transition-colors"
+                  >
+                    Todos
+                  </Link>
+                  <Link
+                    href="/settings"
+                    className="text-gray-500 hover:text-gray-900 transition-colors"
+                  >
+                    Settings
+                  </Link>
+                </nav>
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <span className="hidden sm:inline">{session.email}</span>
+                  <LogoutButton />
+                </div>
+              </div>
+            )}
           </header>
           <main>{children}</main>
         </div>

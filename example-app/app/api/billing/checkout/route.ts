@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initiateCheckout } from "@/lib/billing";
 import { env } from "@/lib/env";
-import { getDemoUserId } from "@/lib/demoMode";
+import { getSession } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 
 const log = logger.child({ route: "POST /api/billing/checkout" });
@@ -34,13 +34,16 @@ export async function POST(req: NextRequest) {
 
   const returnUrl = `${env.APP_URL}/settings`;
 
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
-    const userId = await getDemoUserId();
     const checkoutUrl = await initiateCheckout({
-      externalUserId: userId,
+      externalUserId: session.userId,
       priceId,
       returnUrl,
-      email: env.TEST_USER_EMAIL,
+      email: session.email,
     });
     log.info({ priceId }, "Checkout session created");
     return NextResponse.json({ url: checkoutUrl });

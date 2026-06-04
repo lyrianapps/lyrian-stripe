@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBillingPortalUrl } from "@/lib/billing";
+import { getSession } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 
@@ -31,7 +32,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const portalUrl = getBillingPortalUrl(env.TEST_USER_ID, safeReturnUrl);
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const portalUrl = getBillingPortalUrl(session.userId, safeReturnUrl);
   log.info({ returnUrl: safeReturnUrl }, "Redirecting to billing portal");
   return NextResponse.redirect(portalUrl);
 }

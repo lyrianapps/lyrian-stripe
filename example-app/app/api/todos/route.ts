@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { reportUsage } from "@/lib/billing";
-import { getDemoUserId } from "@/lib/demoMode";
+import { getSession } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 
 const logPost = logger.child({ route: "POST /api/todos" });
 
-/** GET /api/todos — list all todos for the active demo user */
+/** GET /api/todos — list all todos for the logged-in user */
 export async function GET() {
-  const userId = await getDemoUserId();
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = session.userId;
   const todos = await prisma.todo.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
@@ -17,7 +20,10 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const userId = await getDemoUserId();
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = session.userId;
 
   let body: unknown;
   try {

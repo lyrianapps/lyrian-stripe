@@ -5,9 +5,6 @@ const envSchema = z.object({
   BILLING_API_KEY: z.string().min(1),
   BILLING_APP_ID: z.string().min(1),
   SAAS_JWT_SECRET: z.string().min(1),
-  TEST_USER_ID: z.string().default("test-user-001"),
-  TEST_USER_ID_PAYGO: z.string().default("test-user-paygo"),
-  TEST_USER_EMAIL: z.string().email().default("test@example.com"),
   APP_URL: z.string().url().default("http://localhost:3001"),
 });
 

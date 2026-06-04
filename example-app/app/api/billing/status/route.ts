@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { getSubscriptionStatus } from "@/lib/billing";
-import { getDemoUserId } from "@/lib/demoMode";
+import { getSession } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 
 const log = logger.child({ route: "GET /api/billing/status" });
 
 /** GET /api/billing/status — proxy to billing service (keeps API key server-side) */
 export async function GET() {
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ plan: null, status: null }, { status: 401 });
   try {
-    const userId = await getDemoUserId();
+    const userId = session.userId;
     const status = await getSubscriptionStatus({ externalUserId: userId });
     log.debug(
       { plan: status.plan, status: status.status },
