@@ -109,18 +109,9 @@ jobs:
           exit 1
         fi
         echo "DATABASE_URL is set, testing connection..."
-        node -e "
-          const { Client } = require('pg');
-          const client = new Client({ connectionString: process.env.DATABASE_URL });
-          client.connect()
-            .then(() => client.query('SELECT current_database(), version()'))
-            .then(res => {
-              console.log('✅ Connected to DB:', res.rows[0].current_database);
-              console.log('   Version:', res.rows[0].version.split(' ').slice(0,2).join(' '));
-              return client.end();
-            })
-            .catch(err => { console.error('❌ DB connection failed:', err.message); process.exit(1); });
-        "
+        psql "$DATABASE_URL" -c "SELECT current_database(), version();" \
+          && echo "✅ DB connection successful" \
+          || { echo "❌ DB connection failed"; exit 1; }
 
     - name: Run Prisma Migrations
       working-directory: example-app
