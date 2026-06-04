@@ -43,11 +43,11 @@ export async function GET() {
       name: p.name,
       description: p.description ?? "",
       price:
-        p.price === 0
-          ? p.billingType === "metered" || p.billingType === "volume"
-            ? "Usage-based"
-            : "Free"
-          : `$${(p.price / 100).toFixed(2)} / mo`,
+        p.billingType === "metered" || p.billingType === "volume"
+          ? "Usage-based"
+          : p.price === 0
+            ? "Free"
+            : `$${(p.price / 100).toFixed(2)} / mo`,
       billingType: p.billingType,
       cap: p.freeUnitsPerMonth,
       priceId: p.stripePriceId,

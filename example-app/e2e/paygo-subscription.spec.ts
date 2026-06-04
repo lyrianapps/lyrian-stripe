@@ -51,10 +51,10 @@ test("register → paygo upgrade → redirected back to settings", async ({
   });
 
   // ── 3. Click Upgrade on the paygo plan card ────────────────────────────────
-  // The paygo plan card shows "Usage-based" price and "Upgrade →" button
+  // Find the Pay As You Go card by its plan name
   const paygoCard = page
     .locator("div")
-    .filter({ hasText: "Usage-based" })
+    .filter({ hasText: "Pay As You Go" })
     .first();
   await expect(paygoCard).toBeVisible({ timeout: 10000 });
 

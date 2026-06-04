@@ -149,10 +149,9 @@ const checkoutHandler = withApiKey(async (req: NextRequest) => {
     payment_method_types: ["card"],
     customer_email: email,
     line_items: [
-      {
-        price: priceId,
-        quantity: 1,
-      },
+      appPlan.billingType === "metered" || appPlan.billingType === "volume"
+        ? { price: priceId }
+        : { price: priceId, quantity: 1 },
     ],
     success_url: successUrl,
     cancel_url: cancelUrl,
