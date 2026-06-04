@@ -78,10 +78,12 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: "22"
+        cache: "yarn"
+        cache-dependency-path: example-app/yarn.lock
 
     - name: Install dependencies
       working-directory: example-app
-      run: npm ci --ignore-scripts
+      run: yarn install --frozen-lockfile --ignore-scripts
 
     - name: Google Auth
       uses: google-github-actions/auth@v2
