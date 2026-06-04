@@ -10,7 +10,7 @@ export default defineConfig({
 
   use: {
     baseURL:
-      process.env.BASE_URL ??
+      process.env.BASE_URL ||
       "https://lyrian-example-app-494926016713.us-central1.run.app",
     trace: "retain-on-failure",
     screenshot: "on",

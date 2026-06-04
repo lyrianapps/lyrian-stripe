@@ -131,8 +131,6 @@ jobs:
 
     - name: Run E2E tests
       working-directory: example-app
-      env:
-        BASE_URL: ${{ secrets.EXAMPLE_APP_PUBLIC_URL }}
       run: npx playwright test --config=playwright.config.ts
 
     - name: Upload screenshots
