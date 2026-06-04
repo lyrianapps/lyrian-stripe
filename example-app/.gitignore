@@ -2,3 +2,6 @@
 .next/
 node_modules/
 lib/generated/
+playwright-report/
+test-results/
+e2e/screenshots/
