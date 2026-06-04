@@ -129,6 +129,11 @@ jobs:
       working-directory: example-app
       run: npx playwright install chromium --with-deps
 
+    - name: Wait for billing service to be ready
+      run: |
+        echo "Waiting for billing service deployment to settle..."
+        sleep 60
+
     - name: Run E2E tests
       working-directory: example-app
       run: npx playwright test --config=playwright.config.ts
