@@ -25,11 +25,12 @@ import "dotenv/config"; // Load .env before anything else
 import { readFileSync } from "fs";
 import { prisma } from "../lib/prisma";
 import { generateApiKey } from "../lib/auth/apiKey";
-import { Plan } from "../lib/generated/prisma/enums";
+import { Plan, BillingType } from "../lib/generated/prisma/enums";
 import { z } from "zod";
 
 // Valid planKey values must match the Plan enum
 const VALID_PLAN_KEYS = Object.values(Plan) as string[];
+const VALID_BILLING_TYPES = Object.values(BillingType) as string[];
 
 const PlanInputSchema = z.object({
   planKey: z
@@ -45,6 +46,15 @@ const PlanInputSchema = z.object({
   stripeProductId: z.string().startsWith("prod_"),
   stripePriceId: z.string().startsWith("price_"),
   sortOrder: z.number().int().default(0),
+  billingType: z
+    .string()
+    .refine((t): t is BillingType => VALID_BILLING_TYPES.includes(t), {
+      message: `Invalid billingType. Must be one of: ${VALID_BILLING_TYPES.join(", ")}`,
+    })
+    .default("flat_rate"),
+  stripeMeterEventName: z.string().optional(),
+  unitAmount: z.number().int().min(0).optional(), // in cents per unit
+  freeUnitsPerMonth: z.number().int().min(0).optional(),
 });
 
 /**
@@ -230,20 +240,40 @@ async function main() {
       },
     });
 
-    if (plans.length > 0 && !isUpdate) {
-      await tx.appPlan.createMany({
-        data: plans.map((plan, index) => ({
-          appId,
-          planKey: plan.planKey,
-          name: plan.name,
-          description: plan.description,
-          price: plan.price,
-          currency: plan.currency || "usd",
-          stripeProductId: plan.stripeProductId,
-          stripePriceId: plan.stripePriceId,
-          sortOrder: plan.sortOrder ?? index,
-        })),
-      });
+    if (plans.length > 0) {
+      for (const [index, plan] of plans.entries()) {
+        await tx.appPlan.upsert({
+          where: { appId_planKey: { appId, planKey: plan.planKey } },
+          create: {
+            appId,
+            planKey: plan.planKey,
+            name: plan.name,
+            description: plan.description,
+            price: plan.price,
+            currency: plan.currency || "usd",
+            stripeProductId: plan.stripeProductId,
+            stripePriceId: plan.stripePriceId,
+            sortOrder: plan.sortOrder ?? index,
+            billingType: plan.billingType,
+            stripeMeterEventName: plan.stripeMeterEventName,
+            unitAmount: plan.unitAmount,
+            freeUnitsPerMonth: plan.freeUnitsPerMonth,
+          },
+          update: {
+            name: plan.name,
+            description: plan.description,
+            price: plan.price,
+            currency: plan.currency || "usd",
+            stripeProductId: plan.stripeProductId,
+            stripePriceId: plan.stripePriceId,
+            sortOrder: plan.sortOrder ?? index,
+            billingType: plan.billingType,
+            stripeMeterEventName: plan.stripeMeterEventName,
+            unitAmount: plan.unitAmount,
+            freeUnitsPerMonth: plan.freeUnitsPerMonth,
+          },
+        });
+      }
     }
   });
 

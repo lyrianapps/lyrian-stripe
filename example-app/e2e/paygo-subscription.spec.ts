@@ -81,19 +81,16 @@ test("register → paygo upgrade → redirected back to settings", async ({
     }
   }
 
-  // Card number — Stripe renders card fields in iframes
-  // Try the unified "Payment" iframe first, fall back to individual field iframes
-  const cardNumberFrame = page.frameLocator(
-    'iframe[title="Secure card number input frame"]',
-  );
-  const expiryFrame = page.frameLocator(
-    'iframe[title="Secure expiry date input frame"]',
-  );
-  const cvcFrame = page.frameLocator('iframe[title="Secure CVC input frame"]');
+  // Card number — Stripe Checkout renders card fields as regular inputs (not iframes)
+  const cardNumberInput = page.getByRole("textbox", { name: "Card number" });
+  await expect(cardNumberInput).toBeVisible({ timeout: 15000 });
+  await cardNumberInput.fill("4242424242424242");
 
-  await cardNumberFrame.locator("input").fill("4242424242424242");
-  await expiryFrame.locator("input").fill("1230");
-  await cvcFrame.locator("input").fill("123");
+  const expiryInput = page.getByRole("textbox", { name: "Expiration" });
+  await expiryInput.fill("1230");
+
+  const cvcInput = page.getByRole("textbox", { name: /cvc|cvv|security/i });
+  await cvcInput.fill("123");
 
   await page.screenshot({
     path: path.join("e2e", "screenshots", "stripe-checkout-filled.png"),
