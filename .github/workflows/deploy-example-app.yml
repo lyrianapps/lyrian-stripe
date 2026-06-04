@@ -95,14 +95,38 @@ jobs:
         curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.3/cloud-sql-proxy.linux.amd64
         chmod +x cloud-sql-proxy
 
+    - name: Start Cloud SQL Proxy
+      run: |
+        $GITHUB_WORKSPACE/cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
+        sleep 5
+
+    - name: Sanity check DB connection
+      env:
+        DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
+      run: |
+        if [ -z "$DATABASE_URL" ]; then
+          echo "❌ DB_MIGRATE_URL secret is empty or not set"
+          exit 1
+        fi
+        echo "DATABASE_URL is set, testing connection..."
+        node -e "
+          const { Client } = require('pg');
+          const client = new Client({ connectionString: process.env.DATABASE_URL });
+          client.connect()
+            .then(() => client.query('SELECT current_database(), version()'))
+            .then(res => {
+              console.log('✅ Connected to DB:', res.rows[0].current_database);
+              console.log('   Version:', res.rows[0].version.split(' ').slice(0,2).join(' '));
+              return client.end();
+            })
+            .catch(err => { console.error('❌ DB connection failed:', err.message); process.exit(1); });
+        "
+
     - name: Run Prisma Migrations
       working-directory: example-app
       env:
         DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
-      run: |
-        $GITHUB_WORKSPACE/cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
-        sleep 5
-        npx prisma migrate deploy
+      run: npx prisma migrate deploy
 
   e2e:
     name: E2E tests

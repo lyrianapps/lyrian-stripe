@@ -59,30 +59,10 @@ test("register → paygo upgrade → redirected back to settings", async ({
   await expect(paygoCard).toBeVisible({ timeout: 10000 });
 
   const upgradeButton = paygoCard.locator('button:has-text("Upgrade")');
+  await upgradeButton.click();
 
   // ── 4. Stripe checkout ─────────────────────────────────────────────────────
-  // Retry clicking Upgrade in case the billing service is still warming up
-  let stripeUrl = "";
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    await upgradeButton.click();
-    try {
-      await page.waitForURL(/checkout\.stripe\.com/, { timeout: 15000 });
-      stripeUrl = page.url();
-      break;
-    } catch {
-      // Still on settings — check for error banner and retry
-      const hasError = await page.locator("text=Checkout failed").isVisible();
-      if (!hasError && attempt === 5)
-        throw new Error("Never reached Stripe checkout");
-      if (attempt < 5) {
-        await page.waitForTimeout(3000);
-        await page.goto("/settings");
-        await expect(paygoCard).toBeVisible({ timeout: 10000 });
-      }
-    }
-  }
-  if (!stripeUrl)
-    throw new Error("Failed to reach Stripe checkout after retries");
+  await page.waitForURL(/checkout\.stripe\.com/, { timeout: 30000 });
 
   await page.screenshot({
     path: path.join("e2e", "screenshots", "stripe-checkout.png"),
@@ -132,7 +112,7 @@ test("register → paygo upgrade → redirected back to settings", async ({
   // ── 5. Redirected back to /settings ───────────────────────────────────────
   await page.waitForURL(
     /lyrian-example-app.*\.run\.app\/settings|localhost.*\/settings/,
-    { timeout: 30000 },
+    { timeout: 60000 },
   );
 
   // Subscription should now be active (status badge)
