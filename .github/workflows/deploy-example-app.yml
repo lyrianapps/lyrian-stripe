@@ -92,14 +92,14 @@ jobs:
 
     - name: Install Cloud SQL Auth Proxy
       run: |
-        curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.3/cloud-sql-proxy.linux.amd64
-        chmod +x cloud-sql-proxy
+        curl -o /usr/local/bin/cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.3/cloud-sql-proxy.linux.amd64
+        chmod +x /usr/local/bin/cloud-sql-proxy
 
     - name: Run Prisma Migrations
       working-directory: example-app
       env:
         DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
       run: |
-        ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
+        cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
         sleep 5
         npx prisma migrate deploy
