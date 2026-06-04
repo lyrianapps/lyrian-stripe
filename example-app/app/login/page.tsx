@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import type { BillingType } from "@/lib/auth";
 
 // ── Tiny crypto helpers (no extra deps) ──────────────────────────────────────
@@ -53,7 +52,6 @@ function findUser(email: string): StoredUser | undefined {
 type Tab = "register" | "login";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [tab, setTab] = useState<Tab>("register");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -88,8 +86,7 @@ export default function LoginPage() {
         throw new Error(data.error ?? "Registration failed");
       }
 
-      router.push("/");
-      router.refresh();
+      window.location.href = "/";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
       setLoading(false);
@@ -131,8 +128,7 @@ export default function LoginPage() {
         throw new Error(data.error ?? "Login failed");
       }
 
-      router.push("/");
-      router.refresh();
+      window.location.href = "/";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
       setLoading(false);
