@@ -4,6 +4,7 @@ import { reportUsage } from "@/lib/billing";
 import { getSession } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 
+const logGet = logger.child({ route: "GET /api/todos" });
 const logPost = logger.child({ route: "POST /api/todos" });
 
 /** GET /api/todos — list all todos for the logged-in user */
@@ -16,6 +17,7 @@ export async function GET() {
     where: { userId },
     orderBy: { createdAt: "desc" },
   });
+  logGet.debug({ userId, count: todos.length }, "Todos listed");
   return NextResponse.json({ todos });
 }
 

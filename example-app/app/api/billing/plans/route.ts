@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
+import { logger } from "@/lib/logger";
+
+const log = logger.child({ route: "GET /api/billing/plans" });
 
 /**
  * GET /api/billing/plans
@@ -50,8 +53,10 @@ export async function GET() {
       priceId: p.stripePriceId,
     }));
 
+    log.debug({ count: plans.length }, "Plans fetched");
     return NextResponse.json({ plans });
-  } catch {
+  } catch (err) {
+    log.error({ err }, "Failed to fetch plans");
     return NextResponse.json({ plans: [] });
   }
 }

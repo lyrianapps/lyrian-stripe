@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSessionToken, sessionCookieOptions } from "@/lib/auth";
 import type { BillingType, Session } from "@/lib/auth";
+import { logger } from "@/lib/logger";
+
+const log = logger.child({ route: "POST /api/auth/register" });
 
 /**
  * POST /api/auth/register
@@ -46,5 +49,6 @@ export async function POST(req: NextRequest) {
   const token = createSessionToken(session);
   const res = NextResponse.json({ ok: true });
   res.cookies.set(sessionCookieOptions(token));
+  log.info({ userId, email, billingType }, "User registered");
   return res;
 }
