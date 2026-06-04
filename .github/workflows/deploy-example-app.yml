@@ -103,3 +103,44 @@ jobs:
         $GITHUB_WORKSPACE/cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
         sleep 5
         npx prisma migrate deploy
+
+  e2e:
+    name: E2E tests
+    runs-on: ubuntu-latest
+    needs: migrate
+    environment: demo
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: "yarn"
+        cache-dependency-path: example-app/yarn.lock
+
+    - name: Install dependencies
+      working-directory: example-app
+      run: yarn install --frozen-lockfile --ignore-scripts
+
+    - name: Install Playwright browsers
+      working-directory: example-app
+      run: npx playwright install chromium --with-deps
+
+    - name: Run E2E tests
+      working-directory: example-app
+      env:
+        BASE_URL: ${{ secrets.EXAMPLE_APP_PUBLIC_URL }}
+      run: npx playwright test --config=playwright.config.ts
+
+    - name: Upload screenshots
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-screenshots-${{ github.run_number }}
+        path: |
+          example-app/e2e/screenshots/
+          example-app/test-results/
+        retention-days: 14

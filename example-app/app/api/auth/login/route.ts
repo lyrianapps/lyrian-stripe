@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     billingType: billingType as BillingType,
   };
 
-  const token = createSessionToken(session);
+  const token = await createSessionToken(session);
   const res = NextResponse.json({ ok: true });
   res.cookies.set(sessionCookieOptions(token));
   log.info({ userId, email, billingType }, "User logged in");

@@ -10,7 +10,7 @@
  * localStorage stores the credential for login verification (client-side).
  */
 import { cookies } from "next/headers";
-import jwt from "jsonwebtoken";
+import { SignJWT, jwtVerify } from "jose";
 import { env } from "@/lib/env";
 
 export type BillingType = "flat_rate" | "metered";
@@ -29,16 +29,23 @@ export async function getSession(): Promise<Session | null> {
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
   try {
-    const payload = jwt.verify(token, env.SAAS_JWT_SECRET) as Session;
-    if (!payload.userId || !payload.email || !payload.billingType) return null;
-    return payload;
+    const secret = new TextEncoder().encode(env.SAAS_JWT_SECRET);
+    const { payload } = await jwtVerify(token, secret);
+    const { userId, email, billingType } = payload as unknown as Session;
+    if (!userId || !email || !billingType) return null;
+    return { userId, email, billingType };
   } catch {
     return null;
   }
 }
 
-export function createSessionToken(session: Session): string {
-  return jwt.sign(session, env.SAAS_JWT_SECRET, { expiresIn: "30d" });
+export async function createSessionToken(session: Session): Promise<string> {
+  const secret = new TextEncoder().encode(env.SAAS_JWT_SECRET);
+  return new SignJWT(session as unknown as Record<string, unknown>)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("30d")
+    .sign(secret);
 }
 
 export function sessionCookieOptions(token: string) {
