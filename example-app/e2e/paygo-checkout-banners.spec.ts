@@ -79,9 +79,6 @@ async function registerAndOpenPortal(
   return { billingOrigin, userId };
 }
 
-// The billing service appId for the example app (matches BILLING_APP_ID env var).
-const BILLING_APP_ID = "example_app";
-
 const APP_URL =
   process.env.BASE_URL ??
   "https://lyrian-example-app-494926016713.us-central1.run.app";
