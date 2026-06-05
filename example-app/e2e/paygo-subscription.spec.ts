@@ -92,6 +92,14 @@ test("register → paygo upgrade → redirected back to settings", async ({
   const cvcInput = page.getByRole("textbox", { name: /cvc|cvv|security/i });
   await cvcInput.fill("123");
 
+  const cardholderInput = page.getByRole("textbox", {
+    name: /cardholder name/i,
+  });
+  await cardholderInput.fill("Test User");
+
+  const zipInput = page.getByRole("textbox", { name: /zip|postal/i });
+  await zipInput.fill("10001");
+
   await page.screenshot({
     path: path.join("e2e", "screenshots", "stripe-checkout-filled.png"),
     fullPage: true,
@@ -106,22 +114,35 @@ test("register → paygo upgrade → redirected back to settings", async ({
   await expect(submitButton).toBeEnabled({ timeout: 5000 });
   await submitButton.click();
 
-  // ── 5. Redirected back to /settings ───────────────────────────────────────
-  await page.waitForURL(
-    /lyrian-example-app.*\.run\.app\/settings|localhost.*\/settings/,
-    { timeout: 60000 },
-  );
-
-  // Subscription should now be active (status badge)
-  await expect(page.locator("text=active, text=trialing").first()).toBeVisible({
-    timeout: 10000,
+  // ── 5. Billing service shows success banner ───────────────────────────────
+  // After the fix, Stripe → /subscription/success → /subscription?checkout_success=1&returnUrl=...
+  // The billing portal must show "Subscription activated" before the user
+  // navigates back to the example app.
+  await page.waitForURL(/\/subscription\?.*checkout_success=1/, {
+    timeout: 60000,
   });
 
-  // ── 6. Screenshot ─────────────────────────────────────────────────────────
+  await expect(page.locator("text=Subscription activated")).toBeVisible({
+    timeout: 10000,
+  });
+  await expect(page.locator("text=Your payment was successful")).toBeVisible();
+
+  await page.screenshot({
+    path: path.join("e2e", "screenshots", "paygo-success-banner.png"),
+    fullPage: true,
+  });
+
+  // ── 6. Follow "Back" link back to example app settings ────────────────────
+  await page.click('a:has-text("Back")');
+  await page.waitForURL(
+    /lyrian-example-app.*\.run\.app\/settings|localhost.*\/settings/,
+    { timeout: 15000 },
+  );
+
   await page.screenshot({
     path: path.join("e2e", "screenshots", "paygo-subscribed.png"),
     fullPage: true,
   });
 
-  console.log("✅  Screenshot saved: e2e/screenshots/paygo-subscribed.png");
+  console.log("✅  Paygo subscription flow complete");
 });

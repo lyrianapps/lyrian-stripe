@@ -81,10 +81,10 @@ export default async function SubscriptionSuccessPage({
     }
   }
 
-  // Successful payment — redirect to subscription page with a success banner.
-  // If the caller provided their own returnUrl, send them back to their app.
-  if (returnUrl) {
-    redirect(returnUrl);
-  }
-  redirect("/subscription?checkout_success=1");
+  // Successful payment — always show the success banner on the subscription page
+  // first. If a returnUrl was provided, include it so the "Back" link returns
+  // the user to their app after they've seen the confirmation.
+  const successQuery = new URLSearchParams({ checkout_success: "1" });
+  if (returnUrl) successQuery.set("returnUrl", returnUrl);
+  redirect(`/subscription?${successQuery.toString()}`);
 }
