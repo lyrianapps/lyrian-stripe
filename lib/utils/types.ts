@@ -10,6 +10,7 @@ export type AppPlan = {
   interval: string;
   stripePriceId: string;
   billingType: string;
+  unitAmount: number | null; // cents per unit for metered plans
 };
 
 /**

@@ -46,6 +46,7 @@ export default async function SubscriptionPage({
       interval: true,
       stripePriceId: true,
       billingType: true,
+      unitAmount: true,
     },
   });
 

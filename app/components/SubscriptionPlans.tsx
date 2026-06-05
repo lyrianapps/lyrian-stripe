@@ -19,10 +19,16 @@ function formatPrice(
   cents: number,
   currency: string,
   interval: string,
+  billingType: string,
+  unitAmount: number | null,
 ): string {
-  const amount = (cents / 100).toFixed(cents % 100 === 0 ? 0 : 2);
   const symbol =
     currency.toUpperCase() === "USD" ? "$" : currency.toUpperCase();
+  if (billingType === "metered" && unitAmount != null) {
+    const unit = (unitAmount / 100).toFixed(unitAmount % 100 === 0 ? 0 : 2);
+    return `${symbol}${unit}/unit`;
+  }
+  const amount = (cents / 100).toFixed(cents % 100 === 0 ? 0 : 2);
   return `${symbol}${amount}/${interval}`;
 }
 
@@ -107,13 +113,37 @@ export default function SubscriptionPlans({
     }
   };
 
-  // Filter out free plans and current plan from upgrade options
-  const upgradePlans = plans.filter(
-    (plan) => plan.price > 0 && plan.stripePriceId !== currentPriceId,
-  );
+  const isMetered = plans.some((p) => p.billingType === "metered");
 
   return (
     <>
+      {plans.length > 0 && (
+        <div className="mt-6 rounded-lg border px-4 py-3 text-sm flex items-center gap-2.5 bg-gray-50 border-gray-200 text-gray-600">
+          {isMetered ? (
+            <>
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+              <span>
+                <span className="font-semibold text-gray-800">
+                  Usage-based billing
+                </span>
+                {" — "}you&apos;re charged per unit at the end of each billing
+                period. No fixed monthly fee.
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="inline-block w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+              <span>
+                <span className="font-semibold text-gray-800">
+                  Subscription billing
+                </span>
+                {" — "}a fixed amount is charged at the start of each billing
+                period.
+              </span>
+            </>
+          )}
+        </div>
+      )}
       <div className="space-y-6 mt-8">
         {plans.length === 0 ? (
           <Paragraph className="text-gray-500">
@@ -121,13 +151,19 @@ export default function SubscriptionPlans({
           </Paragraph>
         ) : (
           plans
-            .filter((plan) => plan.price > 0) // Don't show free plans as upgrade options
+            .filter((plan) => plan.planKey !== "free_trial") // Don't show free trial as an upgrade option
             .map((plan) => (
               <PlanCard
                 key={plan.stripePriceId}
                 name={plan.name}
                 description={plan.description || ""}
-                price={formatPrice(plan.price, plan.currency, plan.interval)}
+                price={formatPrice(
+                  plan.price,
+                  plan.currency,
+                  plan.interval,
+                  plan.billingType,
+                  plan.unitAmount,
+                )}
                 current={
                   plan.stripePriceId === currentPriceId ||
                   plan.planKey === currentPlan
