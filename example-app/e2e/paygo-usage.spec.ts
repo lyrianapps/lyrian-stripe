@@ -101,10 +101,13 @@ test.describe("Paygo — usage meter display", () => {
       fullPage: true,
     });
 
-    // Usage count should reflect the seeded amount
-    await expect(
-      page.locator(`text=${SEED_COUNT} todos this month`),
-    ).toBeVisible({ timeout: 10000 });
+    // Usage count and label are in sibling spans inside a flex row.
+    // 'todos this month' is the unique anchor; the count is the adjacent span.
+    await expect(page.locator("text=todos this month")).toBeVisible({
+      timeout: 10000,
+    });
+    const usageRow = page.locator("div").filter({ has: page.locator("text=todos this month") }).first();
+    await expect(usageRow.locator(`text=${SEED_COUNT}`)).toBeVisible();
 
     // Estimated cost: 5 × $0.04 = $0.20
     await expect(page.locator("text=0.20")).toBeVisible();
@@ -120,11 +123,11 @@ test.describe("Paygo — usage meter display", () => {
     await registerAndSetupPaygo(page, "increment", SEED_COUNT, 15);
 
     await page.goto("/settings");
-    await expect(
-      page.locator(`text=${SEED_COUNT} todos this month`),
-    ).toBeVisible({
+    await expect(page.locator("text=todos this month")).toBeVisible({
       timeout: 10000,
     });
+    const usageRow0 = page.locator("div").filter({ has: page.locator("text=todos this month") }).first();
+    await expect(usageRow0.locator(`text=${SEED_COUNT}`)).toBeVisible();
 
     // Create 2 todos via the home page
     await page.goto("/");
@@ -154,12 +157,14 @@ test.describe("Paygo — usage meter display", () => {
       fullPage: true,
     });
 
-    // Reload settings — counter should now be seeded + 2
+    // Counter should now be seeded + 2
     await page.goto("/settings");
     const expectedCount = SEED_COUNT + 2;
-    await expect(
-      page.locator(`text=${expectedCount} todos this month`),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("text=todos this month")).toBeVisible({
+      timeout: 10000,
+    });
+    const usageRowAfter = page.locator("div").filter({ has: page.locator("text=todos this month") }).first();
+    await expect(usageRowAfter.locator(`text=${expectedCount}`)).toBeVisible();
 
     await page.screenshot({
       path: path.join(
