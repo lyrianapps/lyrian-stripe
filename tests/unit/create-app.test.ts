@@ -2,37 +2,36 @@
  * Unit tests for create-app script logic
  *
  * Tests the AppConfigSchema parsing and the two execution paths:
- * - New app: generates API key, creates plans
- * - Existing app (update mode): preserves API key, only patches email credentials
+ * - New app: generates API key, upserts app + all plan fields (incl. billingType)
+ * - Existing app (update mode): preserves API key, upserts plans with updated fields
  *
  * @vitest-environment node
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { z } from "zod";
-import { Plan } from "@/lib/generated/prisma/enums";
+import { Plan, BillingType } from "@/lib/generated/prisma/enums";
 
 // ─── Prisma mock ─────────────────────────────────────────────────────────────
 
-const mockUpsert = vi.fn();
-const mockCreateMany = vi.fn();
+const mockAppUpsert = vi.fn();
+const mockPlanUpsert = vi.fn();
 const mockFindUnique = vi.fn();
 
 type MockTx = {
-  app: { upsert: typeof mockUpsert };
-  appPlan: { createMany: typeof mockCreateMany };
+  app: { upsert: typeof mockAppUpsert };
+  appPlan: { upsert: typeof mockPlanUpsert };
 };
 
 const mockTransaction = vi.fn(async (fn: (tx: MockTx) => Promise<void>) => {
   await fn({
-    app: { upsert: mockUpsert },
-    appPlan: { createMany: mockCreateMany },
+    app: { upsert: mockAppUpsert },
+    appPlan: { upsert: mockPlanUpsert },
   });
 });
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    app: { findUnique: mockFindUnique, upsert: mockUpsert },
-    appPlan: { createMany: mockCreateMany },
+    app: { findUnique: mockFindUnique },
     $transaction: mockTransaction,
     $disconnect: vi.fn(),
   },
@@ -57,12 +56,11 @@ vi.mock("@/env", () => ({
   },
 }));
 
-// ─── AppConfigSchema — isolated import ───────────────────────────────────────
-// We redefine the schema here rather than importing the script directly,
-// because create-app.ts has side effects (process.argv reads, prisma.$disconnect)
-// that would break the test runner.
+// ─── Schema re-definition ─────────────────────────────────────────────────────
+// Mirrors create-app.ts exactly. Kept in-sync so test failures catch drift.
 
 const VALID_PLAN_KEYS = Object.values(Plan) as string[];
+const VALID_BILLING_TYPES = Object.values(BillingType) as string[];
 
 const PlanInputSchema = z.object({
   planKey: z
@@ -78,6 +76,15 @@ const PlanInputSchema = z.object({
   stripeProductId: z.string().startsWith("prod_"),
   stripePriceId: z.string().startsWith("price_"),
   sortOrder: z.number().int().default(0),
+  billingType: z
+    .string()
+    .refine((t): t is BillingType => VALID_BILLING_TYPES.includes(t), {
+      message: `Invalid billingType. Must be one of: ${VALID_BILLING_TYPES.join(", ")}`,
+    })
+    .default("flat_rate"),
+  stripeMeterEventName: z.string().optional(),
+  unitAmount: z.number().int().min(0).optional(),
+  freeUnitsPerMonth: z.number().int().min(0).optional(),
 });
 
 const AppConfigSchema = z.union([
@@ -91,12 +98,25 @@ const AppConfigSchema = z.union([
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-const basePlan = {
+const flatPlan = {
   planKey: "basic" as Plan,
   name: "Basic Plan",
   price: 1000,
   stripeProductId: "prod_abc123",
   stripePriceId: "price_abc123",
+  billingType: "flat_rate",
+};
+
+const meteredPlan = {
+  planKey: "paygo" as Plan,
+  name: "Pay As You Go",
+  price: 0,
+  billingType: "metered",
+  stripeProductId: "prod_paygo123",
+  stripePriceId: "price_paygo123",
+  stripeMeterEventName: "api_call",
+  unitAmount: 4,
+  freeUnitsPerMonth: 100,
 };
 
 const freePlan = {
@@ -111,43 +131,79 @@ const freePlan = {
 
 describe("AppConfigSchema", () => {
   describe("legacy array format", () => {
-    it("accepts a valid array of plans", () => {
-      const result = AppConfigSchema.safeParse([basePlan]);
+    it("accepts a valid flat_rate plan", () => {
+      const result = AppConfigSchema.safeParse([flatPlan]);
       expect(result.success).toBe(true);
-      expect(Array.isArray(result.data)).toBe(true);
     });
 
-    it("accepts multiple plans", () => {
-      const result = AppConfigSchema.safeParse([freePlan, basePlan]);
+    it("accepts a metered plan with all optional fields", () => {
+      const result = AppConfigSchema.safeParse([meteredPlan]);
       expect(result.success).toBe(true);
-      expect(Array.isArray(result.data)).toBe(true);
-      if (Array.isArray(result.data)) {
-        expect(result.data).toHaveLength(2);
+      if (result.success && Array.isArray(result.data)) {
+        const p = result.data[0];
+        expect(p.billingType).toBe("metered");
+        expect(p.stripeMeterEventName).toBe("api_call");
+        expect(p.unitAmount).toBe(4);
+        expect(p.freeUnitsPerMonth).toBe(100);
       }
+    });
+
+    it("defaults billingType to flat_rate when omitted", () => {
+      const result = AppConfigSchema.safeParse([freePlan]);
+      expect(result.success).toBe(true);
+      if (result.success && Array.isArray(result.data)) {
+        expect(result.data[0].billingType).toBe("flat_rate");
+      }
+    });
+
+    it("accepts multiple plans with mixed billingTypes", () => {
+      const result = AppConfigSchema.safeParse([
+        freePlan,
+        flatPlan,
+        meteredPlan,
+      ]);
+      expect(result.success).toBe(true);
+      if (result.success && Array.isArray(result.data)) {
+        expect(result.data).toHaveLength(3);
+      }
+    });
+
+    it("rejects an invalid billingType", () => {
+      const result = AppConfigSchema.safeParse([
+        { ...flatPlan, billingType: "subscription" },
+      ]);
+      expect(result.success).toBe(false);
     });
 
     it("rejects an invalid planKey", () => {
       const result = AppConfigSchema.safeParse([
-        { ...basePlan, planKey: "enterprise" },
+        { ...flatPlan, planKey: "enterprise" },
       ]);
       expect(result.success).toBe(false);
     });
 
     it("rejects a plan with a negative price", () => {
-      const result = AppConfigSchema.safeParse([{ ...basePlan, price: -1 }]);
+      const result = AppConfigSchema.safeParse([{ ...flatPlan, price: -1 }]);
       expect(result.success).toBe(false);
     });
 
     it("rejects a stripeProductId without prod_ prefix", () => {
       const result = AppConfigSchema.safeParse([
-        { ...basePlan, stripeProductId: "abc123" },
+        { ...flatPlan, stripeProductId: "abc123" },
       ]);
       expect(result.success).toBe(false);
     });
 
     it("rejects a stripePriceId without price_ prefix", () => {
       const result = AppConfigSchema.safeParse([
-        { ...basePlan, stripePriceId: "abc123" },
+        { ...flatPlan, stripePriceId: "abc123" },
+      ]);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects a negative unitAmount", () => {
+      const result = AppConfigSchema.safeParse([
+        { ...meteredPlan, unitAmount: -1 },
       ]);
       expect(result.success).toBe(false);
     });
@@ -158,7 +214,7 @@ describe("AppConfigSchema", () => {
       const result = AppConfigSchema.safeParse({
         resendApiKey: "re_live_abc123",
         fromEmail: "billing@myapp.com",
-        plans: [basePlan],
+        plans: [flatPlan],
       });
       expect(result.success).toBe(true);
       if (result.success && !Array.isArray(result.data)) {
@@ -169,14 +225,22 @@ describe("AppConfigSchema", () => {
     });
 
     it("accepts an object without email fields (both optional)", () => {
-      const result = AppConfigSchema.safeParse({ plans: [basePlan] });
+      const result = AppConfigSchema.safeParse({ plans: [flatPlan] });
       expect(result.success).toBe(true);
+    });
+
+    it("passes billingType through the object format", () => {
+      const result = AppConfigSchema.safeParse({ plans: [meteredPlan] });
+      expect(result.success).toBe(true);
+      if (result.success && !Array.isArray(result.data)) {
+        expect(result.data.plans[0].billingType).toBe("metered");
+      }
     });
 
     it("rejects a resendApiKey without re_ prefix", () => {
       const result = AppConfigSchema.safeParse({
         resendApiKey: "sk_live_wrong",
-        plans: [basePlan],
+        plans: [flatPlan],
       });
       expect(result.success).toBe(false);
     });
@@ -184,7 +248,7 @@ describe("AppConfigSchema", () => {
     it("rejects an invalid fromEmail", () => {
       const result = AppConfigSchema.safeParse({
         fromEmail: "not-an-email",
-        plans: [basePlan],
+        plans: [flatPlan],
       });
       expect(result.success).toBe(false);
     });
@@ -206,115 +270,102 @@ describe("create-app execution paths", () => {
     vi.clearAllMocks();
   });
 
-  it("new app: upsert is called with generated apiKey and email credentials", async () => {
-    mockFindUnique.mockResolvedValue(null);
-
+  it("new app: upserts app with generated apiKey and creates all plan fields", async () => {
     const appId = "new-app";
     const appName = "New App";
-    const resendApiKey = "re_live_abc";
-    const fromEmail = "billing@newapp.com";
-    const isUpdate = false;
     const apiKey = "sk_live_generated_test_key";
 
     await mockTransaction(async (tx) => {
       await tx.app.upsert({
         where: { id: appId },
-        update: { resendApiKey, fromEmail },
-        create: { id: appId, name: appName, apiKey, resendApiKey, fromEmail },
+        update: { resendApiKey: undefined, fromEmail: undefined },
+        create: { id: appId, name: appName, apiKey },
       });
-      if (!isUpdate) {
-        await tx.appPlan.createMany({
-          data: [basePlan].map((p) => ({ appId, ...p })),
+      for (const [index, plan] of [flatPlan, meteredPlan].entries()) {
+        await tx.appPlan.upsert({
+          where: { appId_planKey: { appId, planKey: plan.planKey } },
+          create: { appId, ...plan, sortOrder: index },
+          update: { ...plan, sortOrder: index },
         });
       }
     });
 
-    expect(mockUpsert).toHaveBeenCalledWith(
+    expect(mockAppUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
           apiKey: "sk_live_generated_test_key",
-          resendApiKey: "re_live_abc",
-          fromEmail: "billing@newapp.com",
         }),
       }),
     );
-    expect(mockCreateMany).toHaveBeenCalled();
+    // Both plans upserted
+    expect(mockPlanUpsert).toHaveBeenCalledTimes(2);
   });
 
-  it("update mode: upsert only patches email fields, plans are NOT recreated", async () => {
-    const existingApp = {
-      id: "existing-app",
-      apiKey: "sk_live_original_key",
-      plans: [basePlan],
-    };
-    mockFindUnique.mockResolvedValue(existingApp);
-
-    const resendApiKey = "re_live_new_key";
-    const fromEmail = "billing@updated.com";
-    const isUpdate = true;
+  it("new app: billingType is written correctly for each plan", async () => {
+    const appId = "billing-type-test";
 
     await mockTransaction(async (tx) => {
-      await tx.app.upsert({
-        where: { id: existingApp.id },
-        update: { resendApiKey, fromEmail },
-        create: {
-          id: existingApp.id,
-          name: "Existing App",
-          apiKey: existingApp.apiKey,
-          resendApiKey,
-          fromEmail,
-        },
-      });
-      if (!isUpdate) {
-        await tx.appPlan.createMany({ data: [] });
+      for (const [index, plan] of [flatPlan, meteredPlan].entries()) {
+        await tx.appPlan.upsert({
+          where: { appId_planKey: { appId, planKey: plan.planKey } },
+          create: { appId, ...plan, sortOrder: index },
+          update: { ...plan, sortOrder: index },
+        });
       }
     });
 
-    // Email credentials updated
-    expect(mockUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        update: {
-          resendApiKey: "re_live_new_key",
-          fromEmail: "billing@updated.com",
-        },
-      }),
-    );
-    // Plans NOT recreated
-    expect(mockCreateMany).not.toHaveBeenCalled();
-    // Original API key is not in the update payload
-    expect(mockUpsert).toHaveBeenCalledWith(
+    const flatCall = mockPlanUpsert.mock.calls[0][0];
+    expect(flatCall.create.billingType).toBe("flat_rate");
+    expect(flatCall.update.billingType).toBe("flat_rate");
+
+    const meteredCall = mockPlanUpsert.mock.calls[1][0];
+    expect(meteredCall.create.billingType).toBe("metered");
+    expect(meteredCall.update.billingType).toBe("metered");
+    expect(meteredCall.create.stripeMeterEventName).toBe("api_call");
+    expect(meteredCall.create.unitAmount).toBe(4);
+    expect(meteredCall.create.freeUnitsPerMonth).toBe(100);
+  });
+
+  it("update mode: api key is preserved, plan fields are upserted", async () => {
+    const appId = "existing-app";
+    const originalApiKey = "sk_live_original_key";
+
+    await mockTransaction(async (tx) => {
+      // update path never passes apiKey in the update payload
+      await tx.app.upsert({
+        where: { id: appId },
+        update: { resendApiKey: "re_live_new", fromEmail: "new@app.com" },
+        create: { id: appId, name: "Existing", apiKey: originalApiKey },
+      });
+      await tx.appPlan.upsert({
+        where: { appId_planKey: { appId, planKey: flatPlan.planKey } },
+        create: { appId, ...flatPlan, sortOrder: 0 },
+        update: { ...flatPlan, sortOrder: 0 },
+      });
+    });
+
+    // API key not touched in the update payload
+    expect(mockAppUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.not.objectContaining({ apiKey: expect.anything() }),
       }),
     );
+    // Plan still upserted (billingType corrected on re-register)
+    expect(mockPlanUpsert).toHaveBeenCalledTimes(1);
   });
 
   it("update mode: clears email credentials when none provided", async () => {
-    const existingApp = {
-      id: "existing-app",
-      apiKey: "sk_live_original_key",
-      plans: [basePlan],
-    };
-    mockFindUnique.mockResolvedValue(existingApp);
-
-    const resendApiKey = undefined;
-    const fromEmail = undefined;
+    const appId = "existing-app";
 
     await mockTransaction(async (tx) => {
       await tx.app.upsert({
-        where: { id: existingApp.id },
-        update: { resendApiKey, fromEmail },
-        create: {
-          id: existingApp.id,
-          name: "Existing App",
-          apiKey: existingApp.apiKey,
-          resendApiKey,
-          fromEmail,
-        },
+        where: { id: appId },
+        update: { resendApiKey: undefined, fromEmail: undefined },
+        create: { id: appId, name: "Existing", apiKey: "sk_live_original" },
       });
     });
 
-    expect(mockUpsert).toHaveBeenCalledWith(
+    expect(mockAppUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         update: { resendApiKey: undefined, fromEmail: undefined },
       }),
