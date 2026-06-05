@@ -100,6 +100,15 @@ async function fillAndSubmitCheckout(
     .fill("Test User");
   await page.getByRole("textbox", { name: /zip|postal/i }).fill("10001");
 
+  // Uncheck "Save my information for faster checkout" (Stripe Link) — when
+  // checked it requires a phone number and blocks form submission.
+  const saveLinkCheckbox = page.getByRole("checkbox", {
+    name: /save my information/i,
+  });
+  if (await saveLinkCheckbox.isChecked().catch(() => false)) {
+    await saveLinkCheckbox.uncheck();
+  }
+
   await page.screenshot({
     path: path.join(
       "e2e",
