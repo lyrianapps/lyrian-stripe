@@ -51,13 +51,15 @@ test("register → paygo upgrade → redirected back to settings", async ({
   });
 
   // ── 3. Click Upgrade on the paygo plan card ────────────────────────────────
-  // Find the Pay As You Go card by its plan name
+  // Filter to the div that contains *both* "Pay As You Go" text and an Upgrade
+  // button — this uniquely identifies the card and avoids matching plain text
+  // nodes or ancestor wrappers (strict mode violation with .first()).
   const paygoCard = page
     .locator("div")
-    .filter({ hasText: "Pay As You Go" })
-    .first();
+    .filter({ has: page.getByText("Pay As You Go", { exact: true }) })
+    .filter({ has: page.locator('button:has-text("Upgrade")') })
+    .last();
   await expect(paygoCard).toBeVisible({ timeout: 10000 });
-
   const upgradeButton = paygoCard.locator('button:has-text("Upgrade")');
   await upgradeButton.click();
 

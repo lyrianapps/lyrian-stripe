@@ -60,8 +60,9 @@ async function registerAndStartCheckout(
 
   const paygoCard = page
     .locator("div")
-    .filter({ hasText: "Pay As You Go" })
-    .first();
+    .filter({ has: page.getByText("Pay As You Go", { exact: true }) })
+    .filter({ has: page.locator('button:has-text("Upgrade")') })
+    .last();
   await expect(paygoCard).toBeVisible({ timeout: 10000 });
   await paygoCard.locator('button:has-text("Upgrade")').click();
 
