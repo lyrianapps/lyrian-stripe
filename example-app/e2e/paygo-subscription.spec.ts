@@ -26,6 +26,11 @@ test("register → paygo upgrade → redirected back to settings", async ({
   await page.goto("/login");
   await expect(page.locator("text=Create account")).toBeVisible();
 
+  await page.screenshot({
+    path: path.join("e2e", "screenshots", "flow-01-login-page.png"),
+    fullPage: true,
+  });
+
   // Email & password
   await page.fill('input[type="email"]', testEmail);
   await page.fill('input[type="password"]', TEST_PASSWORD);
@@ -37,11 +42,21 @@ test("register → paygo upgrade → redirected back to settings", async ({
     /border-blue-500/,
   );
 
+  await page.screenshot({
+    path: path.join("e2e", "screenshots", "flow-02-register-form-filled.png"),
+    fullPage: true,
+  });
+
   // Submit registration
   await page.click('button[type="submit"]:has-text("Create account")');
 
   // Should land on home (todo list)
   await expect(page).toHaveURL("/", { timeout: 15000 });
+
+  await page.screenshot({
+    path: path.join("e2e", "screenshots", "flow-03-home-after-register.png"),
+    fullPage: true,
+  });
 
   // ── 1b. Establish billing_session before checkout ──────────────────────────
   // The billing service's /subscription page requires billing_session. The
@@ -50,6 +65,12 @@ test("register → paygo upgrade → redirected back to settings", async ({
   // redirects back after payment.
   await page.goto("/api/billing/portal-redirect");
   await page.waitForURL(/\/subscription/, { timeout: 20000 });
+
+  await page.screenshot({
+    path: path.join("e2e", "screenshots", "flow-04-billing-portal.png"),
+    fullPage: true,
+  });
+
   // Navigate back to the example app to proceed with checkout
   await page.goto("/settings");
 
@@ -58,6 +79,11 @@ test("register → paygo upgrade → redirected back to settings", async ({
   await expect(page).toHaveURL("/settings", { timeout: 10000 });
   await expect(page.locator("text=Available Plans")).toBeVisible({
     timeout: 10000,
+  });
+
+  await page.screenshot({
+    path: path.join("e2e", "screenshots", "flow-05-settings-plans.png"),
+    fullPage: true,
   });
 
   // ── 3. Click Upgrade on the paygo plan card ────────────────────────────────
@@ -77,7 +103,7 @@ test("register → paygo upgrade → redirected back to settings", async ({
   await page.waitForURL(/checkout\.stripe\.com/, { timeout: 30000 });
 
   await page.screenshot({
-    path: path.join("e2e", "screenshots", "stripe-checkout.png"),
+    path: path.join("e2e", "screenshots", "flow-06-stripe-checkout-empty.png"),
     fullPage: true,
   });
 
@@ -122,7 +148,7 @@ test("register → paygo upgrade → redirected back to settings", async ({
   }
 
   await page.screenshot({
-    path: path.join("e2e", "screenshots", "stripe-checkout-filled.png"),
+    path: path.join("e2e", "screenshots", "flow-07-stripe-checkout-filled.png"),
     fullPage: true,
   });
 
@@ -149,7 +175,7 @@ test("register → paygo upgrade → redirected back to settings", async ({
   await expect(page.locator("text=Your payment was successful")).toBeVisible();
 
   await page.screenshot({
-    path: path.join("e2e", "screenshots", "paygo-success-banner.png"),
+    path: path.join("e2e", "screenshots", "flow-08-billing-portal-success.png"),
     fullPage: true,
   });
 
@@ -161,7 +187,7 @@ test("register → paygo upgrade → redirected back to settings", async ({
   );
 
   await page.screenshot({
-    path: path.join("e2e", "screenshots", "paygo-subscribed.png"),
+    path: path.join("e2e", "screenshots", "flow-09-settings-after-upgrade.png"),
     fullPage: true,
   });
 
