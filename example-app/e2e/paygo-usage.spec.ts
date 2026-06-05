@@ -106,7 +106,10 @@ test.describe("Paygo — usage meter display", () => {
     await expect(page.locator("text=todos this month")).toBeVisible({
       timeout: 10000,
     });
-    const usageRow = page.locator("div").filter({ has: page.locator("text=todos this month") }).first();
+    const usageRow = page
+      .locator("div")
+      .filter({ has: page.locator("text=todos this month") })
+      .first();
     await expect(usageRow.locator(`text=${SEED_COUNT}`)).toBeVisible();
 
     // Estimated cost: 5 × $0.04 = $0.20
@@ -126,7 +129,10 @@ test.describe("Paygo — usage meter display", () => {
     await expect(page.locator("text=todos this month")).toBeVisible({
       timeout: 10000,
     });
-    const usageRow0 = page.locator("div").filter({ has: page.locator("text=todos this month") }).first();
+    const usageRow0 = page
+      .locator("div")
+      .filter({ has: page.locator("text=todos this month") })
+      .first();
     await expect(usageRow0.locator(`text=${SEED_COUNT}`)).toBeVisible();
 
     // Create 2 todos via the home page
@@ -163,7 +169,10 @@ test.describe("Paygo — usage meter display", () => {
     await expect(page.locator("text=todos this month")).toBeVisible({
       timeout: 10000,
     });
-    const usageRowAfter = page.locator("div").filter({ has: page.locator("text=todos this month") }).first();
+    const usageRowAfter = page
+      .locator("div")
+      .filter({ has: page.locator("text=todos this month") })
+      .first();
     await expect(usageRowAfter.locator(`text=${expectedCount}`)).toBeVisible();
 
     await page.screenshot({
