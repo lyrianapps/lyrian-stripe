@@ -17,10 +17,8 @@
  *   ✅ checkout_success=1          → "Subscription activated" (green)
  *   ✅ checkout_declined=lost_card → "Card reported lost" (red)
  *   ✅ checkout_declined=<unknown> → generic "Card declined" (red)
- *
- * Duplicate-card detection (duplicateCardDetected DB flag) is exercised by the
- * billing service's own e2e suite (e2e/duplicate-card.spec.ts) which has direct
- * DB access via the dev setup endpoint.
+ *   ✅ duplicateCardDetected flag  → "Card already on file" (red, shown once)
+ *   ✅ Via /subscription/success redirect (full Stripe → success page → subscription chain)
  */
 import { test, expect, type Page } from "@playwright/test";
 import path from "path";
@@ -305,5 +303,162 @@ test.describe("Billing portal — duplicate card banner", () => {
     await page.goto(`${billingOrigin}/subscription`);
 
     await expect(page.locator("text=Card already on file")).not.toBeVisible();
+  });
+});
+
+// ─── Via checkout redirect (success page → subscription page) ─────────────────
+//
+// These tests exercise the FULL redirect chain that Stripe triggers after checkout:
+//
+//   Stripe → /subscription/success?session_id=...&returnUrl=...&appId=...
+//          → /subscription?checkout_success=1&returnUrl=...          (paid)
+//          → /subscription?checkout_declined=<code>&returnUrl=...    (unpaid)
+//
+// The billing service exposes _test_payment_status / _test_decline_code query
+// params on the success page (non-production only) so we can walk this chain
+// without a real Stripe session — exactly what Stripe would send.
+
+test.describe("Billing portal — via checkout success-page redirect", () => {
+  const FAKE_SESSION_ID = "cs_test_e2e_example_app";
+
+  test("paid checkout → redirects through success page → shows success banner", async ({
+    page,
+  }) => {
+    const { billingOrigin } = await registerAndOpenPortal(page, "via-success");
+    const returnUrl = `${APP_URL}/settings`;
+
+    // Simulate what Stripe sends to success_url after a successful payment.
+    await page.goto(
+      `${billingOrigin}/subscription/success` +
+        `?session_id=${FAKE_SESSION_ID}` +
+        `&_test_payment_status=paid` +
+        `&returnUrl=${encodeURIComponent(returnUrl)}`,
+    );
+
+    // Success page must redirect to /subscription?checkout_success=1
+    await expect(page).toHaveURL(/\/subscription\?.*checkout_success=1/);
+
+    await expect(page.locator("text=Subscription activated")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(
+      page.locator("text=Your payment was successful"),
+    ).toBeVisible();
+
+    // "Back" link must point back to the example app
+    await expect(page.locator('a:has-text("Back")')).toHaveAttribute(
+      "href",
+      returnUrl,
+    );
+
+    // No error banners
+    await expect(page.locator("text=Card declined")).not.toBeVisible();
+
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "via-redirect-checkout-success.png",
+      ),
+      fullPage: true,
+    });
+  });
+
+  test("unpaid checkout (lost card) → redirects through success page → shows decline banner", async ({
+    page,
+  }) => {
+    const { billingOrigin } = await registerAndOpenPortal(
+      page,
+      "via-lost-card",
+    );
+    const returnUrl = `${APP_URL}/settings`;
+
+    // Simulate Stripe redirecting to success_url when the card was blocked.
+    await page.goto(
+      `${billingOrigin}/subscription/success` +
+        `?session_id=${FAKE_SESSION_ID}` +
+        `&_test_payment_status=unpaid` +
+        `&_test_decline_code=lost_card` +
+        `&returnUrl=${encodeURIComponent(returnUrl)}`,
+    );
+
+    // Success page must redirect to /subscription?checkout_declined=lost_card
+    await expect(page).toHaveURL(
+      /\/subscription\?.*checkout_declined=lost_card/,
+    );
+
+    await expect(page.locator("text=Card reported lost")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.locator("text=reported as lost")).toBeVisible();
+
+    // No success banner alongside the error
+    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
+
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "via-redirect-declined-lost-card.png",
+      ),
+      fullPage: true,
+    });
+  });
+
+  test("unpaid checkout (fraudulent) → redirects through success page → shows flagged banner", async ({
+    page,
+  }) => {
+    const { billingOrigin } = await registerAndOpenPortal(page, "via-fraud");
+
+    await page.goto(
+      `${billingOrigin}/subscription/success` +
+        `?session_id=${FAKE_SESSION_ID}` +
+        `&_test_payment_status=unpaid` +
+        `&_test_decline_code=fraudulent`,
+    );
+
+    await expect(page).toHaveURL(
+      /\/subscription\?.*checkout_declined=fraudulent/,
+    );
+    await expect(page.locator("text=Transaction flagged")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
+  });
+
+  test("unpaid checkout (unknown code) → redirects through success page → shows generic decline banner", async ({
+    page,
+  }) => {
+    const { billingOrigin } = await registerAndOpenPortal(page, "via-generic");
+
+    await page.goto(
+      `${billingOrigin}/subscription/success` +
+        `?session_id=${FAKE_SESSION_ID}` +
+        `&_test_payment_status=unpaid`,
+    );
+
+    await expect(page).toHaveURL(/\/subscription\?.*checkout_declined=/);
+    await expect(page.locator("text=Card declined")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.locator("text=declined or flagged")).toBeVisible();
+  });
+
+  test("no session_id → treated as success → shows success banner", async ({
+    page,
+  }) => {
+    // When session_id is absent (e.g. Stripe omits it) the success page falls
+    // through to the success redirect — webhook is source of truth for status.
+    const { billingOrigin } = await registerAndOpenPortal(
+      page,
+      "via-no-session",
+    );
+
+    await page.goto(`${billingOrigin}/subscription/success`);
+
+    await expect(page).toHaveURL(/\/subscription\?.*checkout_success=1/);
+    await expect(page.locator("text=Subscription activated")).toBeVisible({
+      timeout: 10000,
+    });
   });
 });
