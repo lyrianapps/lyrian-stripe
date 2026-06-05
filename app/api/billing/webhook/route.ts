@@ -21,7 +21,13 @@ import {
 
 const logger = _logger.child({ route: "POST /api/billing/webhook" });
 
-const PLAN_HIERARCHY: readonly Plan[] = ["free_trial", "basic", "pro"] as const;
+const PLAN_HIERARCHY: readonly Plan[] = [
+  "free_trial",
+  "basic",
+  "pro",
+  "paygo",
+  "volume",
+] as const;
 
 // =============================================================================
 // PIPELINE INFRASTRUCTURE
