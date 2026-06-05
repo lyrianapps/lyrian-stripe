@@ -17,6 +17,10 @@ const DECLINE_MESSAGES: Record<string, { title: string; body: string }> = {
     title: "Transaction flagged",
     body: "This transaction was flagged as suspicious and was not processed. No charge was made and no subscription was created. Please use a different card or contact your bank.",
   },
+  insufficient_funds: {
+    title: "Insufficient funds",
+    body: "Your card was declined due to insufficient funds. No charge was made and no subscription was created. Please use a different card or add funds to your account.",
+  },
 };
 
 const DECLINE_FALLBACK: { title: string; body: string } = {

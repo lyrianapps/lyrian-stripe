@@ -16,6 +16,7 @@
  * Stripe test decline cards (https://stripe.com/docs/testing#declined-payments):
  *   4000000000009987  → card_declined / lost_card
  *   4000000000009979  → card_declined / stolen_card
+ *   4000000000009995  → card_declined / insufficient_funds
  *   4000000000000002  → card_declined / generic_decline
  *
  * Note: "fraudulent" decline code comes from Stripe Radar rules, not card
@@ -162,6 +163,30 @@ test.describe("Paygo checkout — real Stripe decline cards", () => {
 
     await page.screenshot({
       path: path.join("e2e", "screenshots", "decline-stolen-card.png"),
+      fullPage: true,
+    });
+  });
+
+  test("insufficient funds (4000000000009995) → shows 'Insufficient funds' banner", async ({
+    page,
+  }) => {
+    const email = await registerAndStartCheckout(page, "insufficient-funds");
+
+    await fillAndSubmitCheckout(page, "4000000000009995", email);
+
+    await page.waitForURL(
+      /\/subscription\?.*checkout_declined=insufficient_funds/,
+      { timeout: 60000 },
+    );
+
+    await expect(page.locator("text=Insufficient funds")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.locator("text=insufficient funds")).toBeVisible();
+    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
+
+    await page.screenshot({
+      path: path.join("e2e", "screenshots", "decline-insufficient-funds.png"),
       fullPage: true,
     });
   });
