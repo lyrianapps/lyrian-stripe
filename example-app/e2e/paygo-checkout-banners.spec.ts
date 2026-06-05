@@ -452,9 +452,9 @@ test.describe("Billing portal — via checkout success-page redirect", () => {
     await expect(page).toHaveURL(
       /\/subscription\?.*checkout_declined=insufficient_funds/,
     );
-    await expect(page.locator("text=Insufficient funds")).toBeVisible({
-      timeout: 10000,
-    });
+    await expect(
+      page.getByText("Insufficient funds", { exact: true }),
+    ).toBeVisible({ timeout: 10000 });
     await expect(page.locator("text=add funds to your account")).toBeVisible();
     await expect(page.locator("text=Subscription activated")).not.toBeVisible();
   });
