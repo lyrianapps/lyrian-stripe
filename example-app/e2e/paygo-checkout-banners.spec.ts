@@ -35,13 +35,15 @@ function uniqueEmail(tag: string) {
  * Registers a fresh user on the example app, then navigates the billing portal
  * redirect so the billing service sets a billing_session cookie.
  *
- * Returns the billing service origin (e.g. "https://lyrian-stripe-....run.app")
- * extracted from the URL after the portal redirect completes.
+ * Returns:
+ *   billingOrigin — the billing service origin (e.g. "https://lyrian-stripe-....run.app")
+ *   userId        — the UUID stored in localStorage, used as externalUserId on the
+ *                   billing service (needed to call e2e-setup from the test)
  */
 async function registerAndOpenPortal(
   page: Page,
   emailTag: string,
-): Promise<string> {
+): Promise<{ billingOrigin: string; userId: string }> {
   const email = uniqueEmail(emailTag);
 
   await page.goto("/login");
@@ -52,13 +54,29 @@ async function registerAndOpenPortal(
   await page.click('button[type="submit"]:has-text("Create account")');
   await page.waitForURL("/", { timeout: 15000 });
 
+  // Read the userId that was stored in localStorage during registration.
+  // The billing service uses this as externalUserId.
+  const userId = await page.evaluate<string>(() => {
+    const users = JSON.parse(
+      localStorage.getItem("lyrian_users") ?? "[]",
+    ) as Array<{ userId: string }>;
+    return users[users.length - 1]?.userId ?? "";
+  });
+
   // The portal-redirect endpoint signs a JWT and redirects the browser to the
   // billing service portal, which sets billing_session and lands on /subscription.
   await page.goto("/api/billing/portal-redirect");
   await page.waitForURL(/\/subscription/, { timeout: 20000 });
 
-  return new URL(page.url()).origin;
+  return { billingOrigin: new URL(page.url()).origin, userId };
 }
+
+// The billing service appId for the example app (matches BILLING_APP_ID env var).
+const BILLING_APP_ID = "example_app";
+
+const APP_URL =
+  process.env.BASE_URL ??
+  "https://lyrian-example-app-494926016713.us-central1.run.app";
 
 // ─── Success banner ───────────────────────────────────────────────────────────
 
@@ -66,15 +84,8 @@ test.describe("Billing portal — success banner", () => {
   test("shows 'Subscription activated' banner after successful checkout", async ({
     page,
   }) => {
-    const billingOrigin = await registerAndOpenPortal(page, "success");
-
-    // This is exactly the URL the success/page.tsx now redirects to after a
-    // paid Stripe checkout. Including returnUrl mirrors the real flow.
-    const returnUrl = page.context().browser()
-      ? (process.env.BASE_URL ??
-          "https://lyrian-example-app-494926016713.us-central1.run.app") +
-        "/settings"
-      : "https://lyrian-example-app-494926016713.us-central1.run.app/settings";
+    const { billingOrigin } = await registerAndOpenPortal(page, "success");
+    const returnUrl = `${APP_URL}/settings`;
 
     await page.goto(
       `${billingOrigin}/subscription?checkout_success=1&returnUrl=${encodeURIComponent(returnUrl)}`,
@@ -105,11 +116,8 @@ test.describe("Billing portal — success banner", () => {
   test("clicking Back after success banner returns to example app settings", async ({
     page,
   }) => {
-    const billingOrigin = await registerAndOpenPortal(page, "success-back");
-    const appSettingsUrl =
-      (process.env.BASE_URL ??
-        "https://lyrian-example-app-494926016713.us-central1.run.app") +
-      "/settings";
+    const { billingOrigin } = await registerAndOpenPortal(page, "success-back");
+    const appSettingsUrl = `${APP_URL}/settings`;
 
     await page.goto(
       `${billingOrigin}/subscription?checkout_success=1&returnUrl=${encodeURIComponent(appSettingsUrl)}`,
@@ -131,7 +139,7 @@ test.describe("Billing portal — declined card banners", () => {
   test("shows 'Card reported lost' banner for lost_card decline code", async ({
     page,
   }) => {
-    const billingOrigin = await registerAndOpenPortal(page, "lost-card");
+    const { billingOrigin } = await registerAndOpenPortal(page, "lost-card");
 
     await page.goto(
       `${billingOrigin}/subscription?checkout_declined=lost_card`,
@@ -155,7 +163,7 @@ test.describe("Billing portal — declined card banners", () => {
   test("shows 'Transaction flagged' banner for fraudulent decline code", async ({
     page,
   }) => {
-    const billingOrigin = await registerAndOpenPortal(page, "fraud");
+    const { billingOrigin } = await registerAndOpenPortal(page, "fraud");
 
     await page.goto(
       `${billingOrigin}/subscription?checkout_declined=fraudulent`,
@@ -176,7 +184,10 @@ test.describe("Billing portal — declined card banners", () => {
   test("shows generic 'Card declined' banner for unknown decline code", async ({
     page,
   }) => {
-    const billingOrigin = await registerAndOpenPortal(page, "generic-decline");
+    const { billingOrigin } = await registerAndOpenPortal(
+      page,
+      "generic-decline",
+    );
 
     await page.goto(
       `${billingOrigin}/subscription?checkout_declined=do_not_honor`,
@@ -197,7 +208,7 @@ test.describe("Billing portal — declined card banners", () => {
   test("no banner shown on a clean subscription page visit", async ({
     page,
   }) => {
-    const billingOrigin = await registerAndOpenPortal(page, "no-banner");
+    const { billingOrigin } = await registerAndOpenPortal(page, "no-banner");
 
     // Plain /subscription — no banner params
     await page.goto(`${billingOrigin}/subscription`);
@@ -209,5 +220,90 @@ test.describe("Billing portal — declined card banners", () => {
 
     // Heading should always render
     await expect(page.locator("h1")).toContainText("Subscription");
+  });
+});
+
+// ─── Duplicate card detection ─────────────────────────────────────────────────
+
+test.describe("Billing portal — duplicate card banner", () => {
+  /**
+   * Set the duplicateCardDetected flag on the billing service directly via its
+   * dev/e2e-setup endpoint, mirroring what the payment_method.attached webhook
+   * does in production. This lets us test the banner without a real Stripe event.
+   */
+  async function setDuplicateCardFlag(
+    page: Page,
+    billingOrigin: string,
+    userId: string,
+  ) {
+    const res = await page.request.post(`${billingOrigin}/api/dev/e2e-setup`, {
+      data: {
+        appId: BILLING_APP_ID,
+        externalUserId: userId,
+        duplicateCardDetected: true,
+      },
+    });
+    if (!res.ok()) {
+      throw new Error(`e2e-setup failed: ${res.status()} ${await res.text()}`);
+    }
+  }
+
+  test("shows 'Card already on file' banner when duplicate is detected", async ({
+    page,
+  }) => {
+    const { billingOrigin, userId } = await registerAndOpenPortal(
+      page,
+      "dup-card",
+    );
+    await setDuplicateCardFlag(page, billingOrigin, userId);
+
+    await page.goto(`${billingOrigin}/subscription`);
+
+    await expect(page.locator("text=Card already on file")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(
+      page.locator("text=This card is already added to your account"),
+    ).toBeVisible();
+
+    // Must not show alongside success or other decline banners
+    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
+    await expect(page.locator("text=Card declined")).not.toBeVisible();
+
+    await page.screenshot({
+      path: path.join("e2e", "screenshots", "banner-duplicate-card.png"),
+      fullPage: true,
+    });
+  });
+
+  test("banner is shown only once — cleared on the next page load", async ({
+    page,
+  }) => {
+    const { billingOrigin, userId } = await registerAndOpenPortal(
+      page,
+      "dup-card-once",
+    );
+    await setDuplicateCardFlag(page, billingOrigin, userId);
+
+    // First visit — banner visible
+    await page.goto(`${billingOrigin}/subscription`);
+    await expect(page.locator("text=Card already on file")).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Second visit — flag was atomically cleared, banner gone
+    await page.goto(`${billingOrigin}/subscription`);
+    await expect(page.locator("text=Card already on file")).not.toBeVisible();
+  });
+
+  test("no duplicate banner when flag has not been set", async ({ page }) => {
+    const { billingOrigin } = await registerAndOpenPortal(
+      page,
+      "dup-card-clean",
+    );
+
+    await page.goto(`${billingOrigin}/subscription`);
+
+    await expect(page.locator("text=Card already on file")).not.toBeVisible();
   });
 });
