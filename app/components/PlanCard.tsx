@@ -10,6 +10,8 @@ interface PlanCardProps {
   current: boolean;
   onUpgrade: () => void;
   loading?: boolean;
+  billingType?: string;
+  upgradeDisabled?: boolean;
 }
 
 export function PlanCard({
@@ -19,6 +21,8 @@ export function PlanCard({
   current,
   onUpgrade,
   loading,
+  billingType,
+  upgradeDisabled,
 }: PlanCardProps) {
   return (
     <div
@@ -30,6 +34,11 @@ export function PlanCard({
         </Heading>
         <Paragraph className="mb-1">{description}</Paragraph>
         <div className="font-semibold text-lg">{price}</div>
+        {billingType === "metered" && (
+          <div className="text-xs text-gray-500 mt-0.5">
+            Billed at end of billing period based on usage
+          </div>
+        )}
       </div>
       <div className="mt-4 sm:mt-0">
         {current ? (
@@ -46,6 +55,7 @@ export function PlanCard({
             iconLeft={<ArrowUpRight className="w-4 h-4" />}
             onClick={onUpgrade}
             loading={loading}
+            disabled={upgradeDisabled}
           >
             Upgrade
           </Button>

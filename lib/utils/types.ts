@@ -28,4 +28,6 @@ export type SubscriptionPlansProps = {
   returnUrl?: string;
   // Plans configured for this app
   plans: AppPlan[];
+  // True when the user just completed checkout — webhook may not have fired yet
+  checkoutSuccess?: boolean;
 };

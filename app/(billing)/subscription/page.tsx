@@ -188,6 +188,7 @@ export default async function SubscriptionPage({
         {...subscriptionData}
         returnUrl={returnUrl}
         plans={filteredPlans as AppPlan[]}
+        checkoutSuccess={checkoutSuccess}
       />
     </div>
   );

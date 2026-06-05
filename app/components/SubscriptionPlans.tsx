@@ -42,6 +42,7 @@ export default function SubscriptionPlans({
   cancelAtPeriodEnd,
   returnUrl,
   plans,
+  checkoutSuccess,
 }: SubscriptionPlansProps) {
   const [loadingPriceId, setLoadingPriceId] = useState<string | null>(null);
   const [canceling, setCanceling] = useState(false);
@@ -145,6 +146,11 @@ export default function SubscriptionPlans({
         </div>
       )}
       <div className="space-y-6 mt-8">
+        {checkoutSuccess && (
+          <div className="text-sm text-gray-500 italic">
+            Your subscription is activating—this may take a moment to reflect.
+          </div>
+        )}
         {plans.length === 0 ? (
           <Paragraph className="text-gray-500">
             No pricing plans have been configured for this app yet.
@@ -164,12 +170,14 @@ export default function SubscriptionPlans({
                   plan.billingType,
                   plan.unitAmount,
                 )}
+                billingType={plan.billingType}
                 current={
                   plan.stripePriceId === currentPriceId ||
                   plan.planKey === currentPlan
                 }
                 onUpgrade={() => handleUpgrade(plan.stripePriceId)}
                 loading={loadingPriceId === plan.stripePriceId}
+                upgradeDisabled={checkoutSuccess}
               />
             ))
         )}
