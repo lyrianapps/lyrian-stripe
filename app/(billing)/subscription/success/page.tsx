@@ -16,16 +16,17 @@ export default async function SubscriptionSuccessPage({
     : params?.session_id;
 
   if (sessionId) {
-    // In non-production environments, allow e2e tests to override payment_status
-    // and decline_code via query params without needing a real Stripe session.
+    // Allow e2e tests to override payment_status / decline_code via query params
+    // without needing a real Stripe session. Only active when ENABLE_E2E_SHORTCUTS=true
+    // (set on dev/staging Cloud Run; never set on prod).
     const testPaymentStatus =
-      process.env.NODE_ENV !== "production"
+      process.env.ENABLE_E2E_SHORTCUTS === "true"
         ? Array.isArray(params?._test_payment_status)
           ? params._test_payment_status[0]
           : params?._test_payment_status
         : undefined;
     const testDeclineCode =
-      process.env.NODE_ENV !== "production"
+      process.env.ENABLE_E2E_SHORTCUTS === "true"
         ? Array.isArray(params?._test_decline_code)
           ? params._test_decline_code[0]
           : params?._test_decline_code

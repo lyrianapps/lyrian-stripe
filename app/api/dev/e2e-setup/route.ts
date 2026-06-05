@@ -25,8 +25,8 @@ const E2ESetupSchema = z.object({
  * Only available in development mode.
  */
 export async function POST(req: NextRequest) {
-  // Disabled in production
-  if (process.env.NODE_ENV === "production") {
+  // Only available when ENABLE_E2E_SHORTCUTS=true (set on dev/staging Cloud Run; never set on prod)
+  if (process.env.ENABLE_E2E_SHORTCUTS !== "true") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
