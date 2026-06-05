@@ -45,6 +45,7 @@ export default async function SubscriptionPage({
       currency: true,
       interval: true,
       stripePriceId: true,
+      billingType: true,
     },
   });
 
@@ -121,6 +122,18 @@ export default async function SubscriptionPage({
 
   const isTest = isDevApp || isDevTest;
 
+  // Only show plans matching the user's current billing model.
+  // The user's billing type is determined at sign-up (metered vs flat_rate)
+  // and stored on their current plan. A paygo user should only see metered
+  // upgrade options; a flat-rate user should only see flat-rate tiers.
+  const currentPlanKey = subscription?.plan ?? "free_trial";
+  const currentBillingType =
+    appPlans.find((p) => p.planKey === currentPlanKey)?.billingType ??
+    appPlans[0]?.billingType;
+  const filteredPlans = currentBillingType
+    ? appPlans.filter((p) => p.billingType === currentBillingType)
+    : appPlans;
+
   return (
     <div className="max-w-xl mx-auto py-12 px-4">
       {returnUrl && (
@@ -173,7 +186,7 @@ export default async function SubscriptionPage({
         externalUserId={session.externalUserId}
         {...subscriptionData}
         returnUrl={returnUrl}
-        plans={appPlans as AppPlan[]}
+        plans={filteredPlans as AppPlan[]}
       />
     </div>
   );

@@ -9,6 +9,7 @@ export type AppPlan = {
   currency: string;
   interval: string;
   stripePriceId: string;
+  billingType: string;
 };
 
 /**
