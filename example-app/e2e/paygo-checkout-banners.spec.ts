@@ -455,7 +455,7 @@ test.describe("Billing portal — via checkout success-page redirect", () => {
     await expect(page.locator("text=Insufficient funds")).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.locator("text=insufficient funds")).toBeVisible();
+    await expect(page.locator("text=add funds to your account")).toBeVisible();
     await expect(page.locator("text=Subscription activated")).not.toBeVisible();
   });
 
