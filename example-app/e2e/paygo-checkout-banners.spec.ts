@@ -405,6 +405,60 @@ test.describe("Billing portal — via checkout success-page redirect", () => {
     });
   });
 
+  test("unpaid checkout (stolen card) → redirects through success page → shows decline banner", async ({
+    page,
+  }) => {
+    const { billingOrigin } = await registerAndOpenPortal(
+      page,
+      "via-stolen-card",
+    );
+    const returnUrl = `${APP_URL}/settings`;
+
+    await page.goto(
+      `${billingOrigin}/subscription/success` +
+        `?session_id=${FAKE_SESSION_ID}` +
+        `&_test_payment_status=unpaid` +
+        `&_test_decline_code=stolen_card` +
+        `&returnUrl=${encodeURIComponent(returnUrl)}`,
+    );
+
+    await expect(page).toHaveURL(
+      /\/subscription\?.*checkout_declined=stolen_card/,
+    );
+    await expect(page.locator("text=Card reported stolen")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.locator("text=reported as stolen")).toBeVisible();
+    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
+  });
+
+  test("unpaid checkout (insufficient funds) → redirects through success page → shows decline banner", async ({
+    page,
+  }) => {
+    const { billingOrigin } = await registerAndOpenPortal(
+      page,
+      "via-insufficient-funds",
+    );
+    const returnUrl = `${APP_URL}/settings`;
+
+    await page.goto(
+      `${billingOrigin}/subscription/success` +
+        `?session_id=${FAKE_SESSION_ID}` +
+        `&_test_payment_status=unpaid` +
+        `&_test_decline_code=insufficient_funds` +
+        `&returnUrl=${encodeURIComponent(returnUrl)}`,
+    );
+
+    await expect(page).toHaveURL(
+      /\/subscription\?.*checkout_declined=insufficient_funds/,
+    );
+    await expect(page.locator("text=Insufficient funds")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.locator("text=insufficient funds")).toBeVisible();
+    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
+  });
+
   test("unpaid checkout (fraudulent) → redirects through success page → shows flagged banner", async ({
     page,
   }) => {
