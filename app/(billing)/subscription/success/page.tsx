@@ -57,6 +57,23 @@ export default async function SubscriptionSuccessPage({
         });
         paymentStatus = stripeSession.payment_status;
 
+        // For metered/usage-based subscriptions there is no immediate charge:
+        // Stripe returns payment_status="unpaid" because billing is deferred to
+        // end of period. A completed session with no payment_intent error is
+        // still a success. Only treat "unpaid" as a decline when there is an
+        // actual payment_intent with a last_payment_error (i.e. card declined).
+        if (
+          paymentStatus === "unpaid" &&
+          stripeSession.status === "complete" &&
+          !(
+            stripeSession.payment_intent &&
+            typeof stripeSession.payment_intent !== "string" &&
+            stripeSession.payment_intent.last_payment_error
+          )
+        ) {
+          paymentStatus = "no_payment_required";
+        }
+
         // Extract the specific decline reason from the payment intent so we
         // can show a more actionable message (e.g. "card reported lost").
         if (

@@ -53,7 +53,12 @@ async function registerAndStartCheckout(
   await page.click('button[type="submit"]:has-text("Create account")');
   await page.waitForURL("/", { timeout: 15000 });
 
+  // Establish billing_session before checkout so it persists on the billing
+  // domain when Stripe redirects back after payment.
+  await page.goto("/api/billing/portal-redirect");
+  await page.waitForURL(/\/subscription/, { timeout: 20000 });
   await page.goto("/settings");
+
   await expect(page.locator("text=Available Plans")).toBeVisible({
     timeout: 10000,
   });
