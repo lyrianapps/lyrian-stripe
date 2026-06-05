@@ -4,7 +4,6 @@
     "name": "Free Trial",
     "description": "Try it free for 14 days",
     "price": 0,
-    "billingType": "flat_rate",
     "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
     "stripePriceId": "price_YOUR_FREE_PRICE_ID",
     "sortOrder": 0
@@ -14,7 +13,6 @@
     "name": "Basic",
     "description": "For individuals and small teams",
     "price": 1000,
-    "billingType": "flat_rate",
     "stripeProductId": "prod_YOUR_BASIC_PRODUCT_ID",
     "stripePriceId": "price_YOUR_BASIC_PRICE_ID",
     "sortOrder": 1
@@ -24,21 +22,8 @@
     "name": "Pro",
     "description": "For businesses and power users",
     "price": 3000,
-    "billingType": "flat_rate",
     "stripeProductId": "prod_YOUR_PRO_PRODUCT_ID",
     "stripePriceId": "price_YOUR_PRO_PRICE_ID",
     "sortOrder": 2
-  },
-  {
-    "planKey": "paygo",
-    "name": "Pay As You Go",
-    "description": "Billed monthly based on usage",
-    "price": 0,
-    "billingType": "metered",
-    "stripeProductId": "prod_YOUR_PAYGO_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_PAYGO_PRICE_ID",
-    "unitAmount": 4,
-    "stripeMeterEventName": "api_call",
-    "sortOrder": 3
   }
 ]

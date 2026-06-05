@@ -258,6 +258,7 @@ async function main() {
             stripeMeterEventName: plan.stripeMeterEventName,
             unitAmount: plan.unitAmount,
             freeUnitsPerMonth: plan.freeUnitsPerMonth,
+            isActive: true,
           },
           update: {
             name: plan.name,
@@ -271,6 +272,7 @@ async function main() {
             stripeMeterEventName: plan.stripeMeterEventName,
             unitAmount: plan.unitAmount,
             freeUnitsPerMonth: plan.freeUnitsPerMonth,
+            isActive: true,
           },
         });
       }
