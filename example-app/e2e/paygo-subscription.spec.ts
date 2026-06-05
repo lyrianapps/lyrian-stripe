@@ -12,6 +12,10 @@ import { test, expect } from "@playwright/test";
 import path from "path";
 
 const TEST_PASSWORD = "test1234";
+const BILLING_APP_ID = "example_app";
+
+let createdUserId = "";
+let billingOriginGlobal = "";
 
 function uniqueEmail() {
   return `paygo-test-${Date.now()}@example.com`;
@@ -53,6 +57,14 @@ test("register → paygo upgrade → redirected back to settings", async ({
   // Should land on home (todo list)
   await expect(page).toHaveURL("/", { timeout: 15000 });
 
+  // Read userId for cleanup
+  createdUserId = await page.evaluate<string>(() => {
+    const users = JSON.parse(
+      localStorage.getItem("lyrian_users") ?? "[]",
+    ) as Array<{ userId: string }>;
+    return users[users.length - 1]?.userId ?? "";
+  });
+
   await page.screenshot({
     path: path.join("e2e", "screenshots", "flow-03-home-after-register.png"),
     fullPage: true,
@@ -65,6 +77,7 @@ test("register → paygo upgrade → redirected back to settings", async ({
   // redirects back after payment.
   await page.goto("/api/billing/portal-redirect");
   await page.waitForURL(/\/subscription/, { timeout: 20000 });
+  billingOriginGlobal = new URL(page.url()).origin;
 
   await page.screenshot({
     path: path.join("e2e", "screenshots", "flow-04-billing-portal.png"),
@@ -192,4 +205,17 @@ test("register → paygo upgrade → redirected back to settings", async ({
   });
 
   console.log("✅  Paygo subscription flow complete");
+});
+
+// ─── Cleanup ─────────────────────────────────────────────────────────────────
+
+test.afterAll(async ({ request }) => {
+  if (!billingOriginGlobal || !createdUserId) return;
+  try {
+    await request.post(`${billingOriginGlobal}/api/dev/e2e-cleanup`, {
+      data: { appId: BILLING_APP_ID, externalUserId: createdUserId },
+    });
+  } catch {
+    // Best-effort — don't fail the suite on cleanup errors
+  }
 });

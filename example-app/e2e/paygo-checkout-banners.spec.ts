@@ -24,6 +24,11 @@ import { test, expect, type Page } from "@playwright/test";
 import path from "path";
 
 const TEST_PASSWORD = "test1234";
+const BILLING_APP_ID = "example_app";
+
+// Track every userId created so afterAll can clean up billing records
+const createdUserIds: string[] = [];
+let billingOriginGlobal = "";
 
 function uniqueEmail(tag: string) {
   return `banner-${tag}-${Date.now()}@example.com`;
@@ -66,7 +71,12 @@ async function registerAndOpenPortal(
   await page.goto("/api/billing/portal-redirect");
   await page.waitForURL(/\/subscription/, { timeout: 20000 });
 
-  return { billingOrigin: new URL(page.url()).origin, userId };
+  const billingOrigin = new URL(page.url()).origin;
+  // Track for afterAll cleanup
+  createdUserIds.push(userId);
+  billingOriginGlobal = billingOrigin;
+
+  return { billingOrigin, userId };
 }
 
 // The billing service appId for the example app (matches BILLING_APP_ID env var).
@@ -515,4 +525,19 @@ test.describe("Billing portal — via checkout success-page redirect", () => {
       timeout: 10000,
     });
   });
+});
+
+// ─── Cleanup ─────────────────────────────────────────────────────────────────
+
+test.afterAll(async ({ request }) => {
+  if (!billingOriginGlobal) return;
+  for (const userId of createdUserIds) {
+    try {
+      await request.post(`${billingOriginGlobal}/api/dev/e2e-cleanup`, {
+        data: { appId: BILLING_APP_ID, externalUserId: userId },
+      });
+    } catch {
+      // Best-effort — don't fail the suite on cleanup errors
+    }
+  }
 });
