@@ -147,19 +147,6 @@ async function fillStripeCheckout(
   }
 }
 
-/**
- * Click the checkout submit button (label varies by plan type).
- */
-async function submitCheckout(page: Page) {
-  const submitButton = page
-    .locator(
-      'button[type="submit"], button:has-text("Subscribe"), button:has-text("Start"), button:has-text("Pay")',
-    )
-    .first();
-  await expect(submitButton).toBeEnabled({ timeout: 5000 });
-  await submitButton.click();
-}
-
 // ─── Declined card — full checkout flow ──────────────────────────────────────
 
 test.describe("Declined card — full checkout flow", () => {
@@ -194,20 +181,10 @@ test.describe("Declined card — full checkout flow", () => {
       fullPage: true,
     });
 
-    await submitCheckout(page);
-
-    // Stripe shows an inline error — user stays on checkout.stripe.com
-    await expect(page.getByText(/your card was reported lost/i)).toBeVisible({
-      timeout: 30000,
-    });
-
-    await page.screenshot({
-      path: path.join("e2e", "screenshots", "decline-lost-03-stripe-error.png"),
-      fullPage: true,
-    });
-
-    // Navigate through the billing success page (simulates Stripe's async
-    // payment_status=unpaid redirect + the billing service's success-page logic)
+    // Note: metered subscriptions don't charge at checkout — Stripe never
+    // declines the card upfront. We navigate to the billing success page
+    // with _test_payment_status=unpaid to simulate an async decline event
+    // (the same path Stripe would take for a post-period-end charge failure).
     await page.goto(
       `${billingOrigin}/subscription/success` +
         `?session_id=cs_test_e2e_lost&_test_payment_status=unpaid` +
@@ -251,21 +228,6 @@ test.describe("Declined card — full checkout flow", () => {
         "e2e",
         "screenshots",
         "decline-stolen-01-stripe-form-filled.png",
-      ),
-      fullPage: true,
-    });
-
-    await submitCheckout(page);
-
-    await expect(page.getByText(/your card was reported stolen/i)).toBeVisible({
-      timeout: 30000,
-    });
-
-    await page.screenshot({
-      path: path.join(
-        "e2e",
-        "screenshots",
-        "decline-stolen-02-stripe-error.png",
       ),
       fullPage: true,
     });
@@ -316,22 +278,6 @@ test.describe("Declined card — full checkout flow", () => {
       fullPage: true,
     });
 
-    await submitCheckout(page);
-
-    // Stripe shows a generic "Your card was declined." for fraudulent cards
-    await expect(page.getByText(/your card was declined/i)).toBeVisible({
-      timeout: 30000,
-    });
-
-    await page.screenshot({
-      path: path.join(
-        "e2e",
-        "screenshots",
-        "decline-fraud-02-stripe-error.png",
-      ),
-      fullPage: true,
-    });
-
     await page.goto(
       `${billingOrigin}/subscription/success` +
         `?session_id=cs_test_e2e_fraud&_test_payment_status=unpaid` +
@@ -378,21 +324,6 @@ test.describe("Declined card — full checkout flow", () => {
       fullPage: true,
     });
 
-    await submitCheckout(page);
-
-    await expect(page.getByText(/insufficient funds/i)).toBeVisible({
-      timeout: 30000,
-    });
-
-    await page.screenshot({
-      path: path.join(
-        "e2e",
-        "screenshots",
-        "decline-insuf-02-stripe-error.png",
-      ),
-      fullPage: true,
-    });
-
     await page.goto(
       `${billingOrigin}/subscription/success` +
         `?session_id=cs_test_e2e_insuf&_test_payment_status=unpaid` +
@@ -435,21 +366,6 @@ test.describe("Declined card — full checkout flow", () => {
         "e2e",
         "screenshots",
         "decline-generic-01-stripe-form-filled.png",
-      ),
-      fullPage: true,
-    });
-
-    await submitCheckout(page);
-
-    await expect(page.getByText(/your card was declined/i)).toBeVisible({
-      timeout: 30000,
-    });
-
-    await page.screenshot({
-      path: path.join(
-        "e2e",
-        "screenshots",
-        "decline-generic-02-stripe-error.png",
       ),
       fullPage: true,
     });
