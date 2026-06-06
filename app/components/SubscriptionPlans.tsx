@@ -32,6 +32,158 @@ function formatPrice(
   return `${symbol}${amount}/${interval}`;
 }
 
+// ─── Billing Type Banner ──────────────────────────────────────────────────────
+
+function BillingTypeBanner({ isMetered }: { isMetered: boolean }) {
+  if (isMetered) {
+    return (
+      <div className="mt-6 rounded-lg border px-4 py-3 text-sm flex items-center gap-2.5 bg-gray-50 border-gray-200 text-gray-600">
+        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+        <span>
+          <span className="font-semibold text-gray-800">
+            Usage-based billing
+          </span>
+          {" — "}you&apos;re charged per unit at the end of each billing period.
+          No fixed monthly fee.
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 rounded-lg border px-4 py-3 text-sm flex items-center gap-2.5 bg-gray-50 border-gray-200 text-gray-600">
+      <span className="inline-block w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+      <span>
+        <span className="font-semibold text-gray-800">
+          Subscription billing
+        </span>
+        {" — "}a fixed amount is charged at the start of each billing period.
+      </span>
+    </div>
+  );
+}
+
+// ─── Plan List ────────────────────────────────────────────────────────────────
+
+interface PlanListProps {
+  plans: SubscriptionPlansProps["plans"];
+  currentPlan: string;
+  currentPriceId?: string | null;
+  checkoutSuccess?: boolean;
+  loadingPriceId: string | null;
+  onUpgrade: (priceId: string) => void;
+}
+
+function PlanList({
+  plans,
+  currentPlan,
+  currentPriceId,
+  checkoutSuccess,
+  loadingPriceId,
+  onUpgrade,
+}: PlanListProps) {
+  const visiblePlans = plans.filter((p) => p.planKey !== "free_trial");
+
+  if (visiblePlans.length === 0) {
+    return (
+      <Paragraph className="text-gray-500">
+        No pricing plans have been configured for this app yet.
+      </Paragraph>
+    );
+  }
+
+  return (
+    <>
+      {visiblePlans.map((plan) => (
+        <PlanCard
+          key={plan.stripePriceId}
+          name={plan.name}
+          description={plan.description || ""}
+          price={formatPrice(
+            plan.price,
+            plan.currency,
+            plan.interval,
+            plan.billingType,
+            plan.unitAmount,
+          )}
+          billingType={plan.billingType}
+          current={
+            plan.stripePriceId === currentPriceId ||
+            plan.planKey === currentPlan
+          }
+          onUpgrade={() => onUpgrade(plan.stripePriceId)}
+          loading={loadingPriceId === plan.stripePriceId}
+          upgradeDisabled={checkoutSuccess}
+        />
+      ))}
+    </>
+  );
+}
+
+// ─── Cancel Section ───────────────────────────────────────────────────────────
+
+interface CancelSectionProps {
+  currentPlan: string;
+  currentPeriodStart?: Date | string | null;
+  currentPeriodEnd?: Date | string | null;
+  isCanceled: boolean;
+  canceling: boolean;
+  onCancel: () => void;
+}
+
+function CancelSection({
+  currentPlan,
+  currentPeriodStart,
+  currentPeriodEnd,
+  isCanceled,
+  canceling,
+  onCancel,
+}: CancelSectionProps) {
+  const canCancel = currentPlan !== "free" && currentPlan !== "free_trial";
+  const periodLabel = formatPeriodStatus(
+    currentPlan,
+    currentPeriodStart,
+    currentPeriodEnd,
+  );
+
+  return (
+    <div className="mt-10 border-t pt-6">
+      <Paragraph className="mb-2">
+        <span className="font-semibold">Current Plan:</span> {periodLabel}
+      </Paragraph>
+
+      {isCanceled && (
+        <Paragraph className="mb-4 text-amber-600">
+          Your subscription has been canceled. You&apos;ll have access until{" "}
+          <span className="font-semibold">
+            {formatExpirationDate(currentPeriodEnd)}
+          </span>
+          .
+        </Paragraph>
+      )}
+
+      {!isCanceled && (
+        <>
+          <Paragraph className="mb-4">
+            You can cancel your subscription at any time. Your plan will remain
+            active until the end of the billing period.
+          </Paragraph>
+          <Button
+            variant="outline"
+            iconLeft={<XCircle className="w-4 h-4" />}
+            onClick={onCancel}
+            disabled={canceling || !canCancel}
+          >
+            {canceling ? "Canceling..." : "Cancel Subscription"}
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 export default function SubscriptionPlans({
   currentPlan,
   currentPriceId,
@@ -72,7 +224,7 @@ export default function SubscriptionPlans({
       } else {
         alert(data.error || "Failed to start checkout");
       }
-    } catch (err) {
+    } catch {
       alert("Network error");
     } finally {
       setLoadingPriceId(null);
@@ -108,7 +260,7 @@ export default function SubscriptionPlans({
       } else {
         alert(data.error || "Failed to cancel subscription");
       }
-    } catch (err) {
+    } catch {
       alert("Network error");
     } finally {
       setCanceling(false);
@@ -117,114 +269,39 @@ export default function SubscriptionPlans({
 
   const isMetered = plans.some((p) => p.billingType === "metered");
 
+  // Free trial users have no active subscription — nothing to cancel.
+  const showCancelSection = !checkoutSuccess && currentPlan !== "free_trial";
+
   return (
     <>
-      {plans.length > 0 && (
-        <div className="mt-6 rounded-lg border px-4 py-3 text-sm flex items-center gap-2.5 bg-gray-50 border-gray-200 text-gray-600">
-          {isMetered ? (
-            <>
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-              <span>
-                <span className="font-semibold text-gray-800">
-                  Usage-based billing
-                </span>
-                {" — "}you&apos;re charged per unit at the end of each billing
-                period. No fixed monthly fee.
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="inline-block w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-              <span>
-                <span className="font-semibold text-gray-800">
-                  Subscription billing
-                </span>
-                {" — "}a fixed amount is charged at the start of each billing
-                period.
-              </span>
-            </>
-          )}
-        </div>
-      )}
+      {plans.length > 0 && <BillingTypeBanner isMetered={isMetered} />}
+
       <div className="space-y-6 mt-8">
         {checkoutSuccess && (
           <div className="text-sm text-gray-500 italic">
             Your subscription is activating—this may take a moment to reflect.
           </div>
         )}
-        {plans.length === 0 ? (
-          <Paragraph className="text-gray-500">
-            No pricing plans have been configured for this app yet.
-          </Paragraph>
-        ) : (
-          plans
-            .filter((plan) => plan.planKey !== "free_trial") // Don't show free trial as an upgrade option
-            .map((plan) => (
-              <PlanCard
-                key={plan.stripePriceId}
-                name={plan.name}
-                description={plan.description || ""}
-                price={formatPrice(
-                  plan.price,
-                  plan.currency,
-                  plan.interval,
-                  plan.billingType,
-                  plan.unitAmount,
-                )}
-                billingType={plan.billingType}
-                current={
-                  plan.stripePriceId === currentPriceId ||
-                  plan.planKey === currentPlan
-                }
-                onUpgrade={() => handleUpgrade(plan.stripePriceId)}
-                loading={loadingPriceId === plan.stripePriceId}
-                upgradeDisabled={checkoutSuccess}
-              />
-            ))
-        )}
+        <PlanList
+          plans={plans}
+          currentPlan={currentPlan}
+          currentPriceId={currentPriceId}
+          checkoutSuccess={checkoutSuccess}
+          loadingPriceId={loadingPriceId}
+          onUpgrade={handleUpgrade}
+        />
       </div>
-      {!checkoutSuccess &&
-        !(billingType === "metered" && currentPlan === "free_trial") && (
-          <div className="mt-10 border-t pt-6">
-            <Paragraph className="mb-2">
-              <span className="font-semibold">Current Plan:</span>{" "}
-              {formatPeriodStatus(
-                currentPlan,
-                currentPeriodStart,
-                currentPeriodEnd,
-              )}
-            </Paragraph>
-            {isCanceled ? (
-              <Paragraph className="mb-4 text-amber-600">
-                Your subscription has been canceled. You&apos;ll have access
-                until{" "}
-                <span className="font-semibold">
-                  {formatExpirationDate(currentPeriodEnd)}
-                </span>
-                .
-              </Paragraph>
-            ) : (
-              <>
-                <Paragraph className="mb-4">
-                  You can cancel your subscription at any time. Your plan will
-                  remain active until the end of the billing period.
-                </Paragraph>
-                <Button
-                  variant="outline"
-                  iconLeft={<XCircle className="w-4 h-4" />}
-                  onClick={handleCancel}
-                  disabled={
-                    canceling ||
-                    currentPlan === "free" ||
-                    currentPlan === "free_trial"
-                  }
-                >
-                  {canceling ? "Canceling..." : "Cancel Subscription"}
-                </Button>
-              </>
-            )}
-          </div>
-        )}
+
+      {showCancelSection && (
+        <CancelSection
+          currentPlan={currentPlan}
+          currentPeriodStart={currentPeriodStart}
+          currentPeriodEnd={currentPeriodEnd}
+          isCanceled={isCanceled}
+          canceling={canceling}
+          onCancel={handleCancel}
+        />
+      )}
     </>
   );
 }
