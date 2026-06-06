@@ -85,6 +85,7 @@ export async function POST(req: NextRequest) {
         stripeProductId: `prod_test_basic`,
         stripePriceId: `price_test_basic`,
         sortOrder: 1,
+        billingType: "flat_rate" as const,
       },
       {
         planKey: "pro",
@@ -94,13 +95,31 @@ export async function POST(req: NextRequest) {
         stripeProductId: `prod_test_pro`,
         stripePriceId: `price_test_pro`,
         sortOrder: 2,
+        billingType: "flat_rate" as const,
+      },
+      {
+        planKey: "paygo",
+        name: "Pay As You Go",
+        description: "No monthly cap — pay per unit",
+        price: 0,
+        stripeProductId: `prod_test_paygo`,
+        stripePriceId: `price_test_paygo`,
+        sortOrder: 0,
+        billingType: "metered" as const,
+        unitAmount: 4, // $0.04 per unit
+        stripeMeterEventName: "todo_created",
       },
     ];
-    for (const plan of testPlans) {
+    for (const p of testPlans) {
       await prisma.appPlan.upsert({
-        where: { appId_planKey: { appId, planKey: plan.planKey } },
-        update: {},
-        create: { appId, ...plan },
+        where: { appId_planKey: { appId, planKey: p.planKey } },
+        update: {
+          billingType: p.billingType,
+          unitAmount: "unitAmount" in p ? p.unitAmount : null,
+          stripeMeterEventName:
+            "stripeMeterEventName" in p ? p.stripeMeterEventName : null,
+        },
+        create: { appId, ...p },
       });
     }
 
