@@ -142,20 +142,24 @@ test.describe("Paygo — usage meter display", () => {
     await expect(todoInput).toBeVisible({ timeout: 10000 });
 
     await todoInput.fill("Usage test todo 1");
-    await page.keyboard.press("Enter");
+    // Wait for React to commit the onChange state update before submitting,
+    // otherwise handleAdd reads newText="" and short-circuits (no POST made).
+    await expect(todoInput).toHaveValue("Usage test todo 1", { timeout: 3000 });
+    await page.click('button[type="submit"]');
     // Metered users hit Stripe's meter API on each todo — allow extra time
     await expect(page.locator("text=Usage test todo 1")).toBeVisible({
       timeout: 20000,
     });
-    // Wait for input to clear before next todo
-    await expect(todoInput).toHaveValue("", { timeout: 5000 });
+    // Wait for input to clear (submit handler sets newText="") before next todo
+    await expect(todoInput).toHaveValue("", { timeout: 10000 });
 
     await todoInput.fill("Usage test todo 2");
-    await page.keyboard.press("Enter");
+    await expect(todoInput).toHaveValue("Usage test todo 2", { timeout: 3000 });
+    await page.click('button[type="submit"]');
     await expect(page.locator("text=Usage test todo 2")).toBeVisible({
       timeout: 20000,
     });
-    await expect(todoInput).toHaveValue("", { timeout: 5000 });
+    await expect(todoInput).toHaveValue("", { timeout: 10000 });
 
     await page.screenshot({
       path: path.join("e2e", "screenshots", "usage-03-todos-created.png"),
