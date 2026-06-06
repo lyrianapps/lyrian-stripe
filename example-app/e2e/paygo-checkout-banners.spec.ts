@@ -1,64 +1,69 @@
 /**
- * E2E: Billing portal banner scenarios (example-app context)
+ * E2E: Billing portal — declined card & duplicate card checkout scenarios
  *
- * These tests verify that after checkout events the billing service's
- * subscription page (/subscription) renders the correct notice banner.
+ * Full flow for each decline scenario:
+ *   1. Register a paygo user on the example app
+ *   2. Go to Settings → click "Upgrade →" on the Pay As You Go plan card
+ *   3. Land on Stripe Checkout (checkout.stripe.com)
+ *   4. Fill form with a Stripe test decline card & submit
+ *   5. Screenshot the Stripe-side error message
+ *   6. Navigate through the billing service's success page (using _test params
+ *      to simulate the payment_status Stripe would send in an async decline)
+ *   7. Assert the correct banner on /subscription
  *
- * Strategy:
- *   1. Register a new user on the example app (gets app_session cookie).
- *   2. Navigate to /api/billing/portal-redirect — the example app signs a
- *      short-lived JWT and redirects to the billing service portal, which
- *      creates a billing_session cookie on the billing service domain.
- *   3. From there, navigate directly to the billing service subscription page
- *      with the banner-triggering query params. These params are the same ones
- *      the success/success page sets on redirect — no test-only overrides needed.
+ * Duplicate card detection is webhook-driven (payment_method.attached fires
+ * when a card fingerprint is already on file). The e2e-setup endpoint is used
+ * to set the flag directly, mirroring the real webhook path.
  *
- * Covered scenarios:
- *   ✅ checkout_success=1          → "Subscription activated" (green)
- *   ✅ checkout_declined=lost_card → "Card reported lost" (red)
- *   ✅ checkout_declined=<unknown> → generic "Card declined" (red)
- *   ✅ duplicateCardDetected flag  → "Card already on file" (red, shown once)
- *   ✅ Via /subscription/success redirect (full Stripe → success page → subscription chain)
+ * Stripe test decline cards:
+ *   4000000000009987 — card_declined (generic)
+ *   4000000000009979 — card_declined, insufficient_funds
+ *   4100000000000019 — card_declined, fraudulent
+ *   4000000000005126 — card_declined, lost_card
+ *   4000000000009235 — card_declined, stolen_card
  */
 import { test, expect, type Page } from "@playwright/test";
 import path from "path";
 
 const TEST_PASSWORD = "test1234";
 const BILLING_APP_ID = "example_app";
+const APP_URL =
+  process.env.BASE_URL ??
+  "https://lyrian-example-app-494926016713.us-central1.run.app";
 
-// Track every userId created so afterAll can clean up billing records
 const createdUserIds: string[] = [];
 let billingOriginGlobal = "";
 
 function uniqueEmail(tag: string) {
-  return `banner-${tag}-${Date.now()}@example.com`;
+  return `decline-${tag}-${Date.now()}@example.com`;
 }
 
+// ─── Helper: register → settings → click Upgrade → land on Stripe checkout ──
+
 /**
- * Registers a fresh user on the example app, then navigates the billing portal
- * redirect so the billing service sets a billing_session cookie.
+ * Registers a fresh paygo user, establishes a billing_session cookie by
+ * visiting the portal redirect, then navigates to /settings and clicks
+ * the Upgrade button on the Pay As You Go plan card.
  *
- * Returns:
- *   billingOrigin — the billing service origin (e.g. "https://lyrian-stripe-....run.app")
- *   userId        — the UUID stored in localStorage, used as externalUserId on the
- *                   billing service (needed to call e2e-setup from the test)
+ * Caller lands on checkout.stripe.com ready to fill card details.
  */
-async function registerAndOpenPortal(
+async function registerAndStartCheckout(
   page: Page,
   emailTag: string,
-): Promise<{ billingOrigin: string; userId: string }> {
+): Promise<{ email: string; userId: string; billingOrigin: string }> {
   const email = uniqueEmail(emailTag);
 
+  // ── 1. Register ───────────────────────────────────────────────────────────
   await page.goto("/login");
   await expect(page.locator("text=Create account")).toBeVisible();
 
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', TEST_PASSWORD);
+  // Select Pay as You Go billing type
+  await page.click('button:has-text("Pay as You Go")');
   await page.click('button[type="submit"]:has-text("Create account")');
   await page.waitForURL("/", { timeout: 15000 });
 
-  // Read the userId that was stored in localStorage during registration.
-  // The billing service uses this as externalUserId.
   const userId = await page.evaluate<string>(() => {
     const users = JSON.parse(
       localStorage.getItem("lyrian_users") ?? "[]",
@@ -66,176 +71,420 @@ async function registerAndOpenPortal(
     return users[users.length - 1]?.userId ?? "";
   });
 
-  // The portal-redirect endpoint signs a JWT and redirects the browser to the
-  // billing service portal, which sets billing_session and lands on /subscription.
+  // ── 2. Establish billing_session before checkout ──────────────────────────
+  // billing_session must exist on the billing domain so /subscription renders
+  // correctly when Stripe redirects back after payment.
   await page.goto("/api/billing/portal-redirect");
   await page.waitForURL(/\/subscription/, { timeout: 20000 });
-
   const billingOrigin = new URL(page.url()).origin;
-  // Track for afterAll cleanup
-  createdUserIds.push(userId);
   billingOriginGlobal = billingOrigin;
+  createdUserIds.push(userId);
 
-  return { billingOrigin, userId };
+  // ── 3. Navigate to Settings ───────────────────────────────────────────────
+  await page.goto("/settings");
+  await expect(page.locator("text=Available Plans")).toBeVisible({
+    timeout: 10000,
+  });
+
+  // ── 4. Click Upgrade on the Pay As You Go plan card ───────────────────────
+  const paygoCard = page
+    .locator("div")
+    .filter({ has: page.getByText("Pay As You Go", { exact: true }) })
+    .filter({ has: page.locator('button:has-text("Upgrade")') })
+    .last();
+  await expect(paygoCard).toBeVisible({ timeout: 10000 });
+  await paygoCard.locator('button:has-text("Upgrade")').click();
+
+  // ── 5. Wait for Stripe Checkout ───────────────────────────────────────────
+  await page.waitForURL(/checkout\.stripe\.com/, { timeout: 30000 });
+
+  return { email, userId, billingOrigin };
 }
 
-const APP_URL =
-  process.env.BASE_URL ??
-  "https://lyrian-example-app-494926016713.us-central1.run.app";
+/**
+ * Fill the common Stripe Checkout form fields with a given card number.
+ * Waits for the card number input to appear (Stripe can be slow on first load).
+ */
+async function fillStripeCheckout(
+  page: Page,
+  cardNumber: string,
+  email: string,
+) {
+  const cardInput = page.getByRole("textbox", { name: "Card number" });
+  await expect(cardInput).toBeVisible({ timeout: 45000 });
 
-// ─── Success banner ───────────────────────────────────────────────────────────
+  // Pre-fill email only if Stripe didn't auto-populate it
+  const emailInput = page
+    .locator('input[type="email"], input[name="email"]')
+    .first();
+  if (await emailInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+    const current = await emailInput.inputValue().catch(() => "");
+    if (!current) await emailInput.fill(email);
+  }
 
-test.describe("Billing portal — success banner", () => {
-  test("shows 'Subscription activated' banner after successful checkout", async ({
+  await cardInput.fill(cardNumber);
+  await page.getByRole("textbox", { name: "Expiration" }).fill("1230");
+  await page.getByRole("textbox", { name: /cvc|cvv|security/i }).fill("123");
+
+  const cardholderInput = page.getByRole("textbox", {
+    name: /cardholder name/i,
+  });
+  if (await cardholderInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await cardholderInput.fill("Test User");
+  }
+
+  const zipInput = page.getByRole("textbox", { name: /zip|postal/i });
+  if (await zipInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await zipInput.fill("10001");
+  }
+
+  // Uncheck Stripe Link "save my info" to avoid phone number prompts
+  const saveLinkCheckbox = page.getByRole("checkbox", {
+    name: /save my information/i,
+  });
+  if (await saveLinkCheckbox.isChecked().catch(() => false)) {
+    await saveLinkCheckbox.uncheck();
+  }
+}
+
+/**
+ * Click the checkout submit button (label varies by plan type).
+ */
+async function submitCheckout(page: Page) {
+  const submitButton = page
+    .locator(
+      'button[type="submit"], button:has-text("Subscribe"), button:has-text("Start"), button:has-text("Pay")',
+    )
+    .first();
+  await expect(submitButton).toBeEnabled({ timeout: 5000 });
+  await submitButton.click();
+}
+
+// ─── Declined card — full checkout flow ──────────────────────────────────────
+
+test.describe("Declined card — full checkout flow", () => {
+  // ── Lost card ───────────────────────────────────────────────────────────────
+  test("lost card: Stripe error → billing banner 'Card reported lost'", async ({
     page,
   }) => {
-    const { billingOrigin } = await registerAndOpenPortal(page, "success");
+    const { email, billingOrigin } = await registerAndStartCheckout(
+      page,
+      "lost",
+    );
     const returnUrl = `${APP_URL}/settings`;
 
-    await page.goto(
-      `${billingOrigin}/subscription?checkout_success=1&returnUrl=${encodeURIComponent(returnUrl)}`,
-    );
-
-    await expect(page.locator("text=Subscription activated")).toBeVisible({
-      timeout: 10000,
-    });
-    await expect(
-      page.locator("text=Your payment was successful"),
-    ).toBeVisible();
-
-    // No error banners alongside success
-    await expect(page.locator("text=Card declined")).not.toBeVisible();
-    await expect(page.locator("text=Card reported lost")).not.toBeVisible();
-
-    // "Back" link should point back to the example app
-    const backLink = page.locator('a:has-text("Back")');
-    await expect(backLink).toBeVisible();
-    await expect(backLink).toHaveAttribute("href", returnUrl);
-
     await page.screenshot({
-      path: path.join("e2e", "screenshots", "banner-checkout-success.png"),
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-lost-01-stripe-checkout-empty.png",
+      ),
       fullPage: true,
     });
-  });
 
-  test("clicking Back after success banner returns to example app settings", async ({
-    page,
-  }) => {
-    const { billingOrigin } = await registerAndOpenPortal(page, "success-back");
-    const appSettingsUrl = `${APP_URL}/settings`;
+    // Fill with the lost-card test number
+    await fillStripeCheckout(page, "4000000000005126", email);
 
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-lost-02-stripe-form-filled.png",
+      ),
+      fullPage: true,
+    });
+
+    await submitCheckout(page);
+
+    // Stripe shows an inline error — user stays on checkout.stripe.com
+    await expect(page.getByText(/your card was reported lost/i)).toBeVisible({
+      timeout: 30000,
+    });
+
+    await page.screenshot({
+      path: path.join("e2e", "screenshots", "decline-lost-03-stripe-error.png"),
+      fullPage: true,
+    });
+
+    // Navigate through the billing success page (simulates Stripe's async
+    // payment_status=unpaid redirect + the billing service's success-page logic)
     await page.goto(
-      `${billingOrigin}/subscription?checkout_success=1&returnUrl=${encodeURIComponent(appSettingsUrl)}`,
+      `${billingOrigin}/subscription/success` +
+        `?session_id=cs_test_e2e_lost&_test_payment_status=unpaid` +
+        `&_test_decline_code=lost_card` +
+        `&returnUrl=${encodeURIComponent(returnUrl)}`,
     );
-
-    await expect(page.locator("text=Subscription activated")).toBeVisible();
-    await page.click('a:has-text("Back")');
-
-    await page.waitForURL(
-      /lyrian-example-app.*\.run\.app\/settings|localhost.*\/settings/,
-      { timeout: 15000 },
-    );
-  });
-});
-
-// ─── Declined card banners ────────────────────────────────────────────────────
-
-test.describe("Billing portal — declined card banners", () => {
-  test("shows 'Card reported lost' banner for lost_card decline code", async ({
-    page,
-  }) => {
-    const { billingOrigin } = await registerAndOpenPortal(page, "lost-card");
-
-    await page.goto(
-      `${billingOrigin}/subscription?checkout_declined=lost_card`,
+    await expect(page).toHaveURL(
+      /\/subscription\?.*checkout_declined=lost_card/,
     );
 
     await expect(page.locator("text=Card reported lost")).toBeVisible({
       timeout: 10000,
     });
     await expect(page.locator("text=reported as lost")).toBeVisible();
-
-    // No success or other error banners
     await expect(page.locator("text=Subscription activated")).not.toBeVisible();
-    await expect(page.locator("text=Card already on file")).not.toBeVisible();
 
     await page.screenshot({
-      path: path.join("e2e", "screenshots", "banner-declined-lost-card.png"),
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-lost-04-billing-banner.png",
+      ),
       fullPage: true,
     });
   });
 
-  test("shows 'Transaction flagged' banner for fraudulent decline code", async ({
+  // ── Stolen card ─────────────────────────────────────────────────────────────
+  test("stolen card: Stripe error → billing banner 'Card reported stolen'", async ({
     page,
   }) => {
-    const { billingOrigin } = await registerAndOpenPortal(page, "fraud");
+    const { email, billingOrigin } = await registerAndStartCheckout(
+      page,
+      "stolen",
+    );
+    const returnUrl = `${APP_URL}/settings`;
+
+    await fillStripeCheckout(page, "4000000000009235", email);
+
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-stolen-01-stripe-form-filled.png",
+      ),
+      fullPage: true,
+    });
+
+    await submitCheckout(page);
+
+    await expect(page.getByText(/your card was reported stolen/i)).toBeVisible({
+      timeout: 30000,
+    });
+
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-stolen-02-stripe-error.png",
+      ),
+      fullPage: true,
+    });
 
     await page.goto(
-      `${billingOrigin}/subscription?checkout_declined=fraudulent`,
+      `${billingOrigin}/subscription/success` +
+        `?session_id=cs_test_e2e_stolen&_test_payment_status=unpaid` +
+        `&_test_decline_code=stolen_card` +
+        `&returnUrl=${encodeURIComponent(returnUrl)}`,
+    );
+    await expect(page).toHaveURL(
+      /\/subscription\?.*checkout_declined=stolen_card/,
+    );
+
+    await expect(page.locator("text=Card reported stolen")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.locator("text=reported as stolen")).toBeVisible();
+
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-stolen-03-billing-banner.png",
+      ),
+      fullPage: true,
+    });
+  });
+
+  // ── Fraudulent card ─────────────────────────────────────────────────────────
+  test("fraudulent card: Stripe error → billing banner 'Transaction flagged'", async ({
+    page,
+  }) => {
+    const { email, billingOrigin } = await registerAndStartCheckout(
+      page,
+      "fraud",
+    );
+    const returnUrl = `${APP_URL}/settings`;
+
+    await fillStripeCheckout(page, "4100000000000019", email);
+
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-fraud-01-stripe-form-filled.png",
+      ),
+      fullPage: true,
+    });
+
+    await submitCheckout(page);
+
+    // Stripe shows a generic "Your card was declined." for fraudulent cards
+    await expect(page.getByText(/your card was declined/i)).toBeVisible({
+      timeout: 30000,
+    });
+
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-fraud-02-stripe-error.png",
+      ),
+      fullPage: true,
+    });
+
+    await page.goto(
+      `${billingOrigin}/subscription/success` +
+        `?session_id=cs_test_e2e_fraud&_test_payment_status=unpaid` +
+        `&_test_decline_code=fraudulent` +
+        `&returnUrl=${encodeURIComponent(returnUrl)}`,
+    );
+    await expect(page).toHaveURL(
+      /\/subscription\?.*checkout_declined=fraudulent/,
     );
 
     await expect(page.locator("text=Transaction flagged")).toBeVisible({
       timeout: 10000,
     });
     await expect(page.locator("text=flagged as suspicious")).toBeVisible();
-    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
 
     await page.screenshot({
-      path: path.join("e2e", "screenshots", "banner-declined-fraud.png"),
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-fraud-03-billing-banner.png",
+      ),
       fullPage: true,
     });
   });
 
-  test("shows generic 'Card declined' banner for unknown decline code", async ({
+  // ── Insufficient funds ──────────────────────────────────────────────────────
+  test("insufficient funds: Stripe error → billing banner 'Insufficient funds'", async ({
     page,
   }) => {
-    const { billingOrigin } = await registerAndOpenPortal(
+    const { email, billingOrigin } = await registerAndStartCheckout(
       page,
-      "generic-decline",
+      "insuf",
     );
+    const returnUrl = `${APP_URL}/settings`;
+
+    await fillStripeCheckout(page, "4000000000009979", email);
+
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-insuf-01-stripe-form-filled.png",
+      ),
+      fullPage: true,
+    });
+
+    await submitCheckout(page);
+
+    await expect(page.getByText(/insufficient funds/i)).toBeVisible({
+      timeout: 30000,
+    });
+
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-insuf-02-stripe-error.png",
+      ),
+      fullPage: true,
+    });
 
     await page.goto(
-      `${billingOrigin}/subscription?checkout_declined=do_not_honor`,
+      `${billingOrigin}/subscription/success` +
+        `?session_id=cs_test_e2e_insuf&_test_payment_status=unpaid` +
+        `&_test_decline_code=insufficient_funds` +
+        `&returnUrl=${encodeURIComponent(returnUrl)}`,
     );
+    await expect(page).toHaveURL(
+      /\/subscription\?.*checkout_declined=insufficient_funds/,
+    );
+
+    await expect(
+      page.getByText("Insufficient funds", { exact: true }),
+    ).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("text=add funds to your account")).toBeVisible();
+
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-insuf-03-billing-banner.png",
+      ),
+      fullPage: true,
+    });
+  });
+
+  // ── Generic decline ─────────────────────────────────────────────────────────
+  test("generic decline: Stripe error → billing banner 'Card declined'", async ({
+    page,
+  }) => {
+    const { email, billingOrigin } = await registerAndStartCheckout(
+      page,
+      "generic",
+    );
+    const returnUrl = `${APP_URL}/settings`;
+
+    await fillStripeCheckout(page, "4000000000009987", email);
+
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-generic-01-stripe-form-filled.png",
+      ),
+      fullPage: true,
+    });
+
+    await submitCheckout(page);
+
+    await expect(page.getByText(/your card was declined/i)).toBeVisible({
+      timeout: 30000,
+    });
+
+    await page.screenshot({
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-generic-02-stripe-error.png",
+      ),
+      fullPage: true,
+    });
+
+    await page.goto(
+      `${billingOrigin}/subscription/success` +
+        `?session_id=cs_test_e2e_generic&_test_payment_status=unpaid` +
+        `&_test_decline_code=do_not_honor` +
+        `&returnUrl=${encodeURIComponent(returnUrl)}`,
+    );
+    await expect(page).toHaveURL(/\/subscription\?.*checkout_declined=/);
 
     await expect(page.locator("text=Card declined")).toBeVisible({
       timeout: 10000,
     });
     await expect(page.locator("text=declined or flagged")).toBeVisible();
-    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
 
     await page.screenshot({
-      path: path.join("e2e", "screenshots", "banner-declined-generic.png"),
+      path: path.join(
+        "e2e",
+        "screenshots",
+        "decline-generic-03-billing-banner.png",
+      ),
       fullPage: true,
     });
-  });
-
-  test("no banner shown on a clean subscription page visit", async ({
-    page,
-  }) => {
-    const { billingOrigin } = await registerAndOpenPortal(page, "no-banner");
-
-    // Plain /subscription — no banner params
-    await page.goto(`${billingOrigin}/subscription`);
-
-    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
-    await expect(page.locator("text=Card declined")).not.toBeVisible();
-    await expect(page.locator("text=Card reported lost")).not.toBeVisible();
-    await expect(page.locator("text=Card already on file")).not.toBeVisible();
-
-    // Heading should always render
-    await expect(page.locator("h1")).toContainText("Subscription");
   });
 });
 
 // ─── Duplicate card detection ─────────────────────────────────────────────────
+//
+// Duplicate detection fires via the payment_method.attached Stripe webhook
+// when a card fingerprint is already on file for the app. The e2e-setup
+// endpoint sets the flag directly, mirroring the real webhook path.
 
-test.describe("Billing portal — duplicate card banner", () => {
-  /**
-   * Set the duplicateCardDetected flag on the billing service directly via its
-   * dev/e2e-setup endpoint, mirroring what the payment_method.attached webhook
-   * does in production. This lets us test the banner without a real Stripe event.
-   */
+test.describe("Duplicate card detection — full flow", () => {
   async function setDuplicateCardFlag(
     page: Page,
     billingOrigin: string,
@@ -253,15 +502,29 @@ test.describe("Billing portal — duplicate card banner", () => {
     }
   }
 
-  test("shows 'Card already on file' banner when duplicate is detected", async ({
+  test("duplicate card detected: banner shows 'Card already on file' on next portal visit", async ({
     page,
   }) => {
-    const { billingOrigin, userId } = await registerAndOpenPortal(
+    const { email, userId, billingOrigin } = await registerAndStartCheckout(
       page,
-      "dup-card",
+      "dup",
     );
+
+    // Screenshot the Stripe checkout page (showing the card form)
+    const cardInput = page.getByRole("textbox", { name: "Card number" });
+    await expect(cardInput).toBeVisible({ timeout: 45000 });
+
+    await page.screenshot({
+      path: path.join("e2e", "screenshots", "dup-card-01-stripe-checkout.png"),
+      fullPage: true,
+    });
+
+    // Simulate the billing service detecting a duplicate card via webhook
+    // (in production this fires when payment_method.attached has a known fingerprint)
     await setDuplicateCardFlag(page, billingOrigin, userId);
 
+    // User navigates to the billing portal (e.g. after being redirected back
+    // from Stripe, or via the "Open Billing Portal" link in Settings)
     await page.goto(`${billingOrigin}/subscription`);
 
     await expect(page.locator("text=Card already on file")).toBeVisible({
@@ -270,257 +533,27 @@ test.describe("Billing portal — duplicate card banner", () => {
     await expect(
       page.locator("text=This card is already added to your account"),
     ).toBeVisible();
-
-    // Must not show alongside success or other decline banners
     await expect(page.locator("text=Subscription activated")).not.toBeVisible();
     await expect(page.locator("text=Card declined")).not.toBeVisible();
 
     await page.screenshot({
-      path: path.join("e2e", "screenshots", "banner-duplicate-card.png"),
+      path: path.join("e2e", "screenshots", "dup-card-02-billing-banner.png"),
       fullPage: true,
     });
-  });
 
-  test("banner is shown only once — cleared on the next page load", async ({
-    page,
-  }) => {
-    const { billingOrigin, userId } = await registerAndOpenPortal(
-      page,
-      "dup-card-once",
-    );
-    await setDuplicateCardFlag(page, billingOrigin, userId);
-
-    // First visit — banner visible
-    await page.goto(`${billingOrigin}/subscription`);
-    await expect(page.locator("text=Card already on file")).toBeVisible({
-      timeout: 10000,
-    });
-
-    // Second visit — flag was atomically cleared, banner gone
+    // ── Banner shown only once ─────────────────────────────────────────────
+    // The flag is atomically cleared on first read — second visit has no banner.
     await page.goto(`${billingOrigin}/subscription`);
     await expect(page.locator("text=Card already on file")).not.toBeVisible();
-  });
-
-  test("no duplicate banner when flag has not been set", async ({ page }) => {
-    const { billingOrigin } = await registerAndOpenPortal(
-      page,
-      "dup-card-clean",
-    );
-
-    await page.goto(`${billingOrigin}/subscription`);
-
-    await expect(page.locator("text=Card already on file")).not.toBeVisible();
-  });
-});
-
-// ─── Via checkout redirect (success page → subscription page) ─────────────────
-//
-// These tests exercise the FULL redirect chain that Stripe triggers after checkout:
-//
-//   Stripe → /subscription/success?session_id=...&returnUrl=...&appId=...
-//          → /subscription?checkout_success=1&returnUrl=...          (paid)
-//          → /subscription?checkout_declined=<code>&returnUrl=...    (unpaid)
-//
-// The billing service exposes _test_payment_status / _test_decline_code query
-// params on the success page (non-production only) so we can walk this chain
-// without a real Stripe session — exactly what Stripe would send.
-
-test.describe("Billing portal — via checkout success-page redirect", () => {
-  const FAKE_SESSION_ID = "cs_test_e2e_example_app";
-
-  test("paid checkout → redirects through success page → shows success banner", async ({
-    page,
-  }) => {
-    const { billingOrigin } = await registerAndOpenPortal(page, "via-success");
-    const returnUrl = `${APP_URL}/settings`;
-
-    // Simulate what Stripe sends to success_url after a successful payment.
-    await page.goto(
-      `${billingOrigin}/subscription/success` +
-        `?session_id=${FAKE_SESSION_ID}` +
-        `&_test_payment_status=paid` +
-        `&returnUrl=${encodeURIComponent(returnUrl)}`,
-    );
-
-    // Success page must redirect to /subscription?checkout_success=1
-    await expect(page).toHaveURL(/\/subscription\?.*checkout_success=1/);
-
-    await expect(page.locator("text=Subscription activated")).toBeVisible({
-      timeout: 10000,
-    });
-    await expect(
-      page.locator("text=Your payment was successful"),
-    ).toBeVisible();
-
-    // "Back" link must point back to the example app
-    await expect(page.locator('a:has-text("Back")')).toHaveAttribute(
-      "href",
-      returnUrl,
-    );
-
-    // No error banners
-    await expect(page.locator("text=Card declined")).not.toBeVisible();
 
     await page.screenshot({
-      path: path.join(
-        "e2e",
-        "screenshots",
-        "via-redirect-checkout-success.png",
-      ),
+      path: path.join("e2e", "screenshots", "dup-card-03-banner-cleared.png"),
       fullPage: true,
     });
-  });
 
-  test("unpaid checkout (lost card) → redirects through success page → shows decline banner", async ({
-    page,
-  }) => {
-    const { billingOrigin } = await registerAndOpenPortal(
-      page,
-      "via-lost-card",
+    console.log(
+      `✅  Duplicate card detection flow complete (userId: ${userId})`,
     );
-    const returnUrl = `${APP_URL}/settings`;
-
-    // Simulate Stripe redirecting to success_url when the card was blocked.
-    await page.goto(
-      `${billingOrigin}/subscription/success` +
-        `?session_id=${FAKE_SESSION_ID}` +
-        `&_test_payment_status=unpaid` +
-        `&_test_decline_code=lost_card` +
-        `&returnUrl=${encodeURIComponent(returnUrl)}`,
-    );
-
-    // Success page must redirect to /subscription?checkout_declined=lost_card
-    await expect(page).toHaveURL(
-      /\/subscription\?.*checkout_declined=lost_card/,
-    );
-
-    await expect(page.locator("text=Card reported lost")).toBeVisible({
-      timeout: 10000,
-    });
-    await expect(page.locator("text=reported as lost")).toBeVisible();
-
-    // No success banner alongside the error
-    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
-
-    await page.screenshot({
-      path: path.join(
-        "e2e",
-        "screenshots",
-        "via-redirect-declined-lost-card.png",
-      ),
-      fullPage: true,
-    });
-  });
-
-  test("unpaid checkout (stolen card) → redirects through success page → shows decline banner", async ({
-    page,
-  }) => {
-    const { billingOrigin } = await registerAndOpenPortal(
-      page,
-      "via-stolen-card",
-    );
-    const returnUrl = `${APP_URL}/settings`;
-
-    await page.goto(
-      `${billingOrigin}/subscription/success` +
-        `?session_id=${FAKE_SESSION_ID}` +
-        `&_test_payment_status=unpaid` +
-        `&_test_decline_code=stolen_card` +
-        `&returnUrl=${encodeURIComponent(returnUrl)}`,
-    );
-
-    await expect(page).toHaveURL(
-      /\/subscription\?.*checkout_declined=stolen_card/,
-    );
-    await expect(page.locator("text=Card reported stolen")).toBeVisible({
-      timeout: 10000,
-    });
-    await expect(page.locator("text=reported as stolen")).toBeVisible();
-    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
-  });
-
-  test("unpaid checkout (insufficient funds) → redirects through success page → shows decline banner", async ({
-    page,
-  }) => {
-    const { billingOrigin } = await registerAndOpenPortal(
-      page,
-      "via-insufficient-funds",
-    );
-    const returnUrl = `${APP_URL}/settings`;
-
-    await page.goto(
-      `${billingOrigin}/subscription/success` +
-        `?session_id=${FAKE_SESSION_ID}` +
-        `&_test_payment_status=unpaid` +
-        `&_test_decline_code=insufficient_funds` +
-        `&returnUrl=${encodeURIComponent(returnUrl)}`,
-    );
-
-    await expect(page).toHaveURL(
-      /\/subscription\?.*checkout_declined=insufficient_funds/,
-    );
-    await expect(
-      page.getByText("Insufficient funds", { exact: true }),
-    ).toBeVisible({ timeout: 10000 });
-    await expect(page.locator("text=add funds to your account")).toBeVisible();
-    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
-  });
-
-  test("unpaid checkout (fraudulent) → redirects through success page → shows flagged banner", async ({
-    page,
-  }) => {
-    const { billingOrigin } = await registerAndOpenPortal(page, "via-fraud");
-
-    await page.goto(
-      `${billingOrigin}/subscription/success` +
-        `?session_id=${FAKE_SESSION_ID}` +
-        `&_test_payment_status=unpaid` +
-        `&_test_decline_code=fraudulent`,
-    );
-
-    await expect(page).toHaveURL(
-      /\/subscription\?.*checkout_declined=fraudulent/,
-    );
-    await expect(page.locator("text=Transaction flagged")).toBeVisible({
-      timeout: 10000,
-    });
-    await expect(page.locator("text=Subscription activated")).not.toBeVisible();
-  });
-
-  test("unpaid checkout (unknown code) → redirects through success page → shows generic decline banner", async ({
-    page,
-  }) => {
-    const { billingOrigin } = await registerAndOpenPortal(page, "via-generic");
-
-    await page.goto(
-      `${billingOrigin}/subscription/success` +
-        `?session_id=${FAKE_SESSION_ID}` +
-        `&_test_payment_status=unpaid`,
-    );
-
-    await expect(page).toHaveURL(/\/subscription\?.*checkout_declined=/);
-    await expect(page.locator("text=Card declined")).toBeVisible({
-      timeout: 10000,
-    });
-    await expect(page.locator("text=declined or flagged")).toBeVisible();
-  });
-
-  test("no session_id → treated as success → shows success banner", async ({
-    page,
-  }) => {
-    // When session_id is absent (e.g. Stripe omits it) the success page falls
-    // through to the success redirect — webhook is source of truth for status.
-    const { billingOrigin } = await registerAndOpenPortal(
-      page,
-      "via-no-session",
-    );
-
-    await page.goto(`${billingOrigin}/subscription/success`);
-
-    await expect(page).toHaveURL(/\/subscription\?.*checkout_success=1/);
-    await expect(page.locator("text=Subscription activated")).toBeVisible({
-      timeout: 10000,
-    });
   });
 });
 

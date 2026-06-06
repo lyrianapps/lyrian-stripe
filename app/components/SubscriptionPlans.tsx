@@ -182,44 +182,46 @@ export default function SubscriptionPlans({
             ))
         )}
       </div>
-      <div className="mt-10 border-t pt-6">
-        <Paragraph className="mb-2">
-          <span className="font-semibold">Current Plan:</span>{" "}
-          {formatPeriodStatus(
-            currentPlan,
-            currentPeriodStart,
-            currentPeriodEnd,
-          )}
-        </Paragraph>
-        {isCanceled ? (
-          <Paragraph className="mb-4 text-amber-600">
-            Your subscription has been canceled. You&apos;ll have access until{" "}
-            <span className="font-semibold">
-              {formatExpirationDate(currentPeriodEnd)}
-            </span>
-            .
+      {!checkoutSuccess && (
+        <div className="mt-10 border-t pt-6">
+          <Paragraph className="mb-2">
+            <span className="font-semibold">Current Plan:</span>{" "}
+            {formatPeriodStatus(
+              currentPlan,
+              currentPeriodStart,
+              currentPeriodEnd,
+            )}
           </Paragraph>
-        ) : (
-          <>
-            <Paragraph className="mb-4">
-              You can cancel your subscription at any time. Your plan will
-              remain active until the end of the billing period.
+          {isCanceled ? (
+            <Paragraph className="mb-4 text-amber-600">
+              Your subscription has been canceled. You&apos;ll have access until{" "}
+              <span className="font-semibold">
+                {formatExpirationDate(currentPeriodEnd)}
+              </span>
+              .
             </Paragraph>
-            <Button
-              variant="outline"
-              iconLeft={<XCircle className="w-4 h-4" />}
-              onClick={handleCancel}
-              disabled={
-                canceling ||
-                currentPlan === "free" ||
-                currentPlan === "free_trial"
-              }
-            >
-              {canceling ? "Canceling..." : "Cancel Subscription"}
-            </Button>
-          </>
-        )}
-      </div>
+          ) : (
+            <>
+              <Paragraph className="mb-4">
+                You can cancel your subscription at any time. Your plan will
+                remain active until the end of the billing period.
+              </Paragraph>
+              <Button
+                variant="outline"
+                iconLeft={<XCircle className="w-4 h-4" />}
+                onClick={handleCancel}
+                disabled={
+                  canceling ||
+                  currentPlan === "free" ||
+                  currentPlan === "free_trial"
+                }
+              >
+                {canceling ? "Canceling..." : "Cancel Subscription"}
+              </Button>
+            </>
+          )}
+        </div>
+      )}
     </>
   );
 }
