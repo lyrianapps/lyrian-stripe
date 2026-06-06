@@ -162,7 +162,7 @@ function CancelSection({
         </Paragraph>
       )}
 
-      {!isCanceled && (
+      {!isCanceled && canCancel && (
         <>
           <Paragraph className="mb-4">
             You can cancel your subscription at any time. Your plan will remain
@@ -172,7 +172,7 @@ function CancelSection({
             variant="outline"
             iconLeft={<XCircle className="w-4 h-4" />}
             onClick={onCancel}
-            disabled={canceling || !canCancel}
+            disabled={canceling}
           >
             {canceling ? "Canceling..." : "Cancel Subscription"}
           </Button>
@@ -195,7 +195,6 @@ export default function SubscriptionPlans({
   returnUrl,
   plans,
   checkoutSuccess,
-  billingType,
 }: SubscriptionPlansProps) {
   const [loadingPriceId, setLoadingPriceId] = useState<string | null>(null);
   const [canceling, setCanceling] = useState(false);
@@ -269,8 +268,7 @@ export default function SubscriptionPlans({
 
   const isMetered = plans.some((p) => p.billingType === "metered");
 
-  // Free trial users have no active subscription — nothing to cancel.
-  const showCancelSection = !checkoutSuccess && currentPlan !== "free_trial";
+  const showCancelSection = !checkoutSuccess;
 
   return (
     <>
