@@ -128,9 +128,12 @@ export default async function SubscriptionPage({
   // and stored on their current plan. A paygo user should only see metered
   // upgrade options; a flat-rate user should only see flat-rate tiers.
   const currentPlanKey = subscription?.plan ?? "free_trial";
+  // Only filter by billing type when the user has an active (non-trial) subscription.
+  // Free-trial users have no AppPlan record, so we show all plans to let them choose.
   const currentBillingType =
-    appPlans.find((p) => p.planKey === currentPlanKey)?.billingType ??
-    appPlans[0]?.billingType;
+    currentPlanKey !== "free_trial"
+      ? appPlans.find((p) => p.planKey === currentPlanKey)?.billingType
+      : undefined;
   const filteredPlans = currentBillingType
     ? appPlans.filter((p) => p.billingType === currentBillingType)
     : appPlans;
