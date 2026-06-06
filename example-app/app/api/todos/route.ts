@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma, resetPrisma } from "@/lib/prisma";
 import { reportUsage } from "@/lib/billing";
 import { getSession } from "@/lib/auth";
 import { logger } from "@/lib/logger";
@@ -70,9 +70,10 @@ export async function POST(req: NextRequest) {
   // generator + adapter-pg this is not always populated, causing a NOT NULL
   // violation that surfaces as an opaque 500.
   //
-  // Cloud Run + Cloud SQL also intermittently serves stale pg pool sockets
-  // ("connect EIO /cloudsql/.../.s.PGSQL.5432"). Retry once on transient
-  // connection errors to absorb that.
+  // Cloud Run + Cloud SQL intermittently serves stale pg pool sockets
+  // ("connect EIO /cloudsql/.../.s.PGSQL.5432"). When that happens the
+  // ENTIRE pool can be poisoned, so a same-client retry won't help — we
+  // dispose the client and try again with a fresh one.
   function isTransientConnError(err: unknown): boolean {
     const msg = err instanceof Error ? err.message : String(err);
     return (
@@ -84,37 +85,37 @@ export async function POST(req: NextRequest) {
   }
 
   let todo;
-  try {
-    todo = await prisma.todo.create({
-      data: { text, userId, updatedAt: new Date() },
-    });
-  } catch (err) {
-    if (isTransientConnError(err)) {
-      logPost.warn({ err }, "Transient DB connection error, retrying once");
-      try {
-        todo = await prisma.todo.create({
-          data: { text, userId, updatedAt: new Date() },
-        });
-      } catch (err2) {
-        logPost.error({ err: err2, userId }, "Failed to create todo (retry)");
-        return NextResponse.json(
-          {
-            error: "Failed to create todo",
-            message: err2 instanceof Error ? err2.message : String(err2),
-          },
-          { status: 500 },
+  let lastErr: unknown;
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      todo = await prisma.todo.create({
+        data: { text, userId, updatedAt: new Date() },
+      });
+      lastErr = undefined;
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < MAX_ATTEMPTS && isTransientConnError(err)) {
+        logPost.warn(
+          { err, attempt },
+          "Transient DB connection error, recreating client and retrying",
         );
+        await resetPrisma();
+        continue;
       }
-    } else {
-      logPost.error({ err, userId }, "Failed to create todo");
-      return NextResponse.json(
-        {
-          error: "Failed to create todo",
-          message: err instanceof Error ? err.message : String(err),
-        },
-        { status: 500 },
-      );
+      break;
     }
+  }
+  if (lastErr || !todo) {
+    logPost.error({ err: lastErr, userId }, "Failed to create todo");
+    return NextResponse.json(
+      {
+        error: "Failed to create todo",
+        message: lastErr instanceof Error ? lastErr.message : String(lastErr),
+      },
+      { status: 500 },
+    );
   }
 
   logPost.info(
