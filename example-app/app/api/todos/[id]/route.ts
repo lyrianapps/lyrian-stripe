@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { todoStore } from "@/lib/todoStore";
 import { getSession } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 
@@ -14,18 +14,11 @@ export async function PATCH(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
 
-  const existing = await prisma.todo.findFirst({
-    where: { id, userId: session.userId },
-  });
-  if (!existing) {
+  const existing = todoStore.findOwned(id, session.userId);
+  if (!existing)
     return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
 
-  const todo = await prisma.todo.update({
-    where: { id },
-    data: { completed: !existing.completed },
-  });
-
+  const todo = todoStore.toggle(id)!;
   logPatch.info({ todoId: id, completed: todo.completed }, "Todo toggled");
   return NextResponse.json({ todo });
 }
@@ -36,14 +29,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
 
-  const existing = await prisma.todo.findFirst({
-    where: { id, userId: session.userId },
-  });
-  if (!existing) {
+  const existing = todoStore.findOwned(id, session.userId);
+  if (!existing)
     return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
 
-  await prisma.todo.delete({ where: { id } });
+  todoStore.delete(id);
   logDelete.info({ todoId: id }, "Todo deleted");
   return NextResponse.json({ success: true });
 }

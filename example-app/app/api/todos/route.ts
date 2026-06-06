@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma, resetPrisma } from "@/lib/prisma";
+import { todoStore } from "@/lib/todoStore";
 import { reportUsage } from "@/lib/billing";
 import { getSession } from "@/lib/auth";
 import { logger } from "@/lib/logger";
@@ -13,10 +13,7 @@ export async function GET() {
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = session.userId;
-  const todos = await prisma.todo.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-  });
+  const todos = todoStore.list(userId);
   logGet.debug({ userId, count: todos.length }, "Todos listed");
   return NextResponse.json({ todos });
 }
@@ -65,66 +62,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Step 2: Create the todo ───────────────────────────────────────────────
-  // Set updatedAt explicitly because the migration column has no DB default
-  // (only the Prisma client's @updatedAt). With the new prisma-client
-  // generator + adapter-pg this is not always populated, causing a NOT NULL
-  // violation that surfaces as an opaque 500.
-  //
-  // Cloud Run + Cloud SQL intermittently serves stale pg pool sockets
-  // ("connect EIO /cloudsql/.../.s.PGSQL.5432"). When that happens the
-  // ENTIRE pool can be poisoned, so a same-client retry won't help — we
-  // dispose the client and try again with a fresh one.
-  function isTransientConnError(err: unknown): boolean {
-    const msg = err instanceof Error ? err.message : String(err);
-    return (
-      msg.includes("EIO") ||
-      msg.includes("ECONNRESET") ||
-      msg.includes("ETIMEDOUT") ||
-      msg.includes("Connection terminated")
-    );
-  }
-
-  let todo;
-  let lastErr: unknown;
-  const MAX_ATTEMPTS = 4;
-  // Backoff: 0/1s/3s/5s — gives the Cloud SQL Auth Proxy sidecar enough
-  // time to come up after a Cloud Run cold start (~5-10s typical). Total
-  // worst case: 9s of waits + 4 × 5s connect timeout = ~29s, just under
-  // Cloud Run's 60s request budget.
-  const BACKOFF_MS = [0, 1_000, 3_000, 5_000];
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    if (BACKOFF_MS[attempt - 1] > 0) {
-      await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1]));
-    }
-    try {
-      todo = await prisma.todo.create({
-        data: { text, userId, updatedAt: new Date() },
-      });
-      lastErr = undefined;
-      break;
-    } catch (err) {
-      lastErr = err;
-      if (attempt < MAX_ATTEMPTS && isTransientConnError(err)) {
-        logPost.warn(
-          { err, attempt },
-          "Transient DB connection error, recreating client and retrying",
-        );
-        await resetPrisma();
-        continue;
-      }
-      break;
-    }
-  }
-  if (lastErr || !todo) {
-    logPost.error({ err: lastErr, userId }, "Failed to create todo");
-    return NextResponse.json(
-      {
-        error: "Failed to create todo",
-        message: lastErr instanceof Error ? lastErr.message : String(lastErr),
-      },
-      { status: 500 },
-    );
-  }
+  const todo = todoStore.create(userId, text);
 
   logPost.info(
     { todoId: todo.id, plan: usage.plan, used: usage.used },
