@@ -91,7 +91,11 @@ const DEFAULT_SUBSCRIPTION: SubscriptionStatusResponse = {
 };
 
 // JWT and Portal
-export function createBillingToken(userId: string, returnUrl: string): string {
+export function createBillingToken(
+  userId: string,
+  returnUrl: string,
+  billingType?: string,
+): string {
   if (!env.SAAS_JWT_SECRET) {
     throw new Error("SAAS_JWT_SECRET is not configured");
   }
@@ -100,17 +104,22 @@ export function createBillingToken(userId: string, returnUrl: string): string {
       iss: env.BILLING_APP_ID,
       sub: userId,
       returnUrl,
+      ...(billingType ? { billingType } : {}),
     },
     env.SAAS_JWT_SECRET as string,
     { expiresIn: "5m" },
   );
 }
 
-export function getBillingPortalUrl(userId: string, returnUrl: string): string {
+export function getBillingPortalUrl(
+  userId: string,
+  returnUrl: string,
+  billingType?: string,
+): string {
   if (!env.BILLING_API_URL) {
     throw new Error("BILLING_API_URL is not configured");
   }
-  const token = createBillingToken(userId, returnUrl);
+  const token = createBillingToken(userId, returnUrl, billingType);
   return `${env.BILLING_API_URL}/api/billing/portal?token=${token}`;
 }
 

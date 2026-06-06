@@ -30,4 +30,8 @@ export type SubscriptionPlansProps = {
   plans: AppPlan[];
   // True when the user just completed checkout — webhook may not have fired yet
   checkoutSuccess?: boolean;
+  // Billing model chosen by the user at registration on the SaaS app.
+  // "metered" hides the "Current Plan" section for free-trial users since
+  // they have not yet subscribed to any plan.
+  billingType?: string;
 };

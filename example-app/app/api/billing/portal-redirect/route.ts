@@ -36,7 +36,14 @@ export async function GET(req: NextRequest) {
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const portalUrl = getBillingPortalUrl(session.userId, safeReturnUrl);
-  log.info({ returnUrl: safeReturnUrl }, "Redirecting to billing portal");
+  const portalUrl = getBillingPortalUrl(
+    session.userId,
+    safeReturnUrl,
+    session.billingType,
+  );
+  log.info(
+    { returnUrl: safeReturnUrl, billingType: session.billingType },
+    "Redirecting to billing portal",
+  );
   return NextResponse.redirect(portalUrl);
 }

@@ -65,6 +65,13 @@ export async function GET(req: NextRequest) {
       // Ignore malformed returnUrl
     }
 
+    // Forward billingType so the subscription page can adjust its UI
+    const billingType = payload.billingType as string | undefined;
+    if (billingType === "metered" || billingType === "flat_rate") {
+      const separator = redirectTo.includes("?") ? "&" : "?";
+      redirectTo = `${redirectTo}${separator}billingType=${billingType}`;
+    }
+
     const response = NextResponse.redirect(redirectTo);
 
     // ✅ Secure session cookie

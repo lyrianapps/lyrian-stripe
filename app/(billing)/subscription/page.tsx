@@ -89,6 +89,9 @@ export default async function SubscriptionPage({
     ? resolvedSearchParams.checkout_declined[0]
     : (resolvedSearchParams.checkout_declined as string | undefined);
   const checkoutSuccess = Boolean(resolvedSearchParams.checkout_success);
+  const billingType = Array.isArray(resolvedSearchParams.billingType)
+    ? resolvedSearchParams.billingType[0]
+    : (resolvedSearchParams.billingType as string | undefined);
 
   // Atomically read-and-clear the duplicate card flag so the banner shows once.
   const duplicateCardDetected = await prisma.$transaction(async (tx) => {
@@ -192,6 +195,7 @@ export default async function SubscriptionPage({
         returnUrl={returnUrl}
         plans={filteredPlans as AppPlan[]}
         checkoutSuccess={checkoutSuccess}
+        billingType={billingType}
       />
     </div>
   );
