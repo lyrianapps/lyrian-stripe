@@ -127,7 +127,7 @@ const checkoutHandler = withApiKey(async (req: NextRequest) => {
     }
   }
 
-  const successBase = `${appUrl}/subscription/success`;
+  const successBase = `${appUrl}/api/billing/checkout-return`;
   const cancelBase = `${appUrl}/subscription`;
 
   // {CHECKOUT_SESSION_ID} is a Stripe template literal — Stripe substitutes the
