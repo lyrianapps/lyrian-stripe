@@ -145,19 +145,43 @@ test.describe("Paygo — usage meter display", () => {
     // Wait for React to commit the onChange state update before submitting,
     // otherwise handleAdd reads newText="" and short-circuits (no POST made).
     await expect(todoInput).toHaveValue("Usage test todo 1", { timeout: 3000 });
+
+    // Capture the POST response so we can fail fast with a useful error
+    // instead of waiting 20s for an element that will never appear.
+    const post1Promise = page.waitForResponse(
+      (r) => r.url().endsWith("/api/todos") && r.request().method() === "POST",
+      { timeout: 25000 },
+    );
     await page.click('button[type="submit"]');
+    const post1 = await post1Promise;
+    const post1Body = await post1.text();
+    if (!post1.ok()) {
+      throw new Error(
+        `POST /api/todos failed (${post1.status()}): ${post1Body}`,
+      );
+    }
     // Metered users hit Stripe's meter API on each todo — allow extra time
     await expect(page.locator("text=Usage test todo 1")).toBeVisible({
-      timeout: 20000,
+      timeout: 10000,
     });
     // Wait for input to clear (submit handler sets newText="") before next todo
     await expect(todoInput).toHaveValue("", { timeout: 10000 });
 
     await todoInput.fill("Usage test todo 2");
     await expect(todoInput).toHaveValue("Usage test todo 2", { timeout: 3000 });
+    const post2Promise = page.waitForResponse(
+      (r) => r.url().endsWith("/api/todos") && r.request().method() === "POST",
+      { timeout: 25000 },
+    );
     await page.click('button[type="submit"]');
+    const post2 = await post2Promise;
+    if (!post2.ok()) {
+      throw new Error(
+        `POST /api/todos failed (${post2.status()}): ${await post2.text()}`,
+      );
+    }
     await expect(page.locator("text=Usage test todo 2")).toBeVisible({
-      timeout: 20000,
+      timeout: 10000,
     });
     await expect(todoInput).toHaveValue("", { timeout: 10000 });
 
