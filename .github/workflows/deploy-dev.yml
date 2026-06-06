@@ -190,10 +190,9 @@ jobs:
         curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.3/cloud-sql-proxy.linux.amd64
         chmod +x cloud-sql-proxy
 
-    - name: Stripe webhook signature sanity check
+    - name: Schema sanity check
       env:
         DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
-        BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
       run: |
         ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
         for i in $(seq 1 15); do
@@ -201,4 +200,10 @@ jobs:
           echo "Waiting for Cloud SQL proxy... ($i/15)"
           sleep 2
         done
-        npx tsx scripts/webhook-sanity-check.ts
+        npx tsx scripts/schema-sanity-check.ts
+
+    - name: Stripe webhook signature sanity check
+      env:
+        DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
+        BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
+      run: npx tsx scripts/webhook-sanity-check.ts
