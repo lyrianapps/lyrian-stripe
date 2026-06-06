@@ -330,7 +330,7 @@ export function SettingsPage() {
       </section>
 
       {/* ── Plan options ────────────────────────────────────────────────────────────── */}
-      {plans.length > 0 && (
+      {!hasSubscription && plans.length > 0 && (
         <section>
           <h2 className="text-base font-semibold text-gray-900 mb-4">
             Available Plans

@@ -114,7 +114,7 @@ export async function ensureBillingSession(
 
     cookieStore.set("billing_session", sessionToken, {
       httpOnly: true,
-      secure: true,
+      secure: process.env.BILLING_APP_URL?.startsWith("https://") ?? false,
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60,

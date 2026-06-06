@@ -75,9 +75,13 @@ export async function GET(req: NextRequest) {
     const response = NextResponse.redirect(redirectTo);
 
     // ✅ Secure session cookie
+    // `secure` is only enforced over HTTPS — don't set it on plain HTTP so
+    // the cookie isn't silently dropped when the service is accessed via http://
+    // (e.g. localhost in dev/test environments).
+    const isSecure = origin?.startsWith("https://") ?? false;
     response.cookies.set("billing_session", sessionToken, {
       httpOnly: true,
-      secure: true,
+      secure: isSecure,
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60, // 1 hour
