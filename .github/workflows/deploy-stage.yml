@@ -149,5 +149,9 @@ jobs:
         DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
       run: |
         ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
-        sleep 5
+        for i in $(seq 1 15); do
+          nc -z localhost 5432 && break
+          echo "Waiting for Cloud SQL proxy... ($i/15)"
+          sleep 2
+        done
         npx prisma migrate deploy
