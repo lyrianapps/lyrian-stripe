@@ -200,7 +200,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setBillingType("flat_rate")}
-                  className={`rounded-lg border-2 p-3 text-left text-sm transition-colors ${
+                  className={`rounded-lg border-2 p-3 text-left text-sm transition-colors cursor-pointer ${
                     billingType === "flat_rate"
                       ? "border-blue-500 bg-blue-50"
                       : "border-gray-200 hover:border-gray-300"
@@ -214,7 +214,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setBillingType("metered")}
-                  className={`rounded-lg border-2 p-3 text-left text-sm transition-colors ${
+                  className={`rounded-lg border-2 p-3 text-left text-sm transition-colors cursor-pointer ${
                     billingType === "metered"
                       ? "border-blue-500 bg-blue-50"
                       : "border-gray-200 hover:border-gray-300"

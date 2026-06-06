@@ -1,6 +1,13 @@
 import { redirect } from "next/navigation";
-import { getStripeForApp } from "@/lib/stripe";
-import { prisma } from "@/lib/prisma";
+import {
+  ensureBillingSession,
+  resolveCheckoutOutcome,
+} from "@/lib/checkout/resolveCheckoutOutcome";
+
+/** Coerce a string | string[] | undefined searchParam to string | undefined. */
+function param(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 export default async function SubscriptionSuccessPage({
   searchParams,
@@ -8,100 +15,40 @@ export default async function SubscriptionSuccessPage({
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const params = await searchParams;
-  const returnUrl = Array.isArray(params?.returnUrl)
-    ? params.returnUrl[0]
-    : params?.returnUrl;
-  const sessionId = Array.isArray(params?.session_id)
-    ? params.session_id[0]
-    : params?.session_id;
+  const sessionId = param(params?.session_id);
+  const returnUrl = param(params?.returnUrl);
+  const appId = param(params?.appId);
 
   if (sessionId) {
-    // Allow e2e tests to override payment_status / decline_code via query params
-    // without needing a real Stripe session. Only active when ENABLE_E2E_SHORTCUTS=true
-    // (set on dev/staging Cloud Run; never set on prod).
-    const testPaymentStatus =
+    // Ensure the user has a billing_session cookie. When they arrive directly
+    // from Stripe (no prior portal-redirect visit) the cookie is absent — we
+    // recreate it from the Stripe session metadata.
+    await ensureBillingSession(sessionId, appId);
+
+    // In test environments, _test_* params short-circuit the Stripe API call.
+    const testOverrides =
       process.env.ENABLE_E2E_SHORTCUTS === "true"
-        ? Array.isArray(params?._test_payment_status)
-          ? params._test_payment_status[0]
-          : params?._test_payment_status
-        : undefined;
-    const testDeclineCode =
-      process.env.ENABLE_E2E_SHORTCUTS === "true"
-        ? Array.isArray(params?._test_decline_code)
-          ? params._test_decline_code[0]
-          : params?._test_decline_code
+        ? {
+            paymentStatus: param(params?._test_payment_status),
+            declineCode: param(params?._test_decline_code),
+          }
         : undefined;
 
-    let paymentStatus: string | null = testPaymentStatus ?? null;
-    // Default to the generic code; overridden below from Stripe or test param.
-    let declineCode = testDeclineCode ?? "declined";
+    const outcome = await resolveCheckoutOutcome(
+      sessionId,
+      appId,
+      testOverrides,
+    );
 
-    if (!testPaymentStatus) {
-      try {
-        const appId = Array.isArray(params?.appId)
-          ? params.appId[0]
-          : params?.appId;
-        const appStripeKey = appId
-          ? ((
-              await prisma.app.findUnique({
-                where: { id: appId },
-                select: { stripeSecretKey: true },
-              })
-            )?.stripeSecretKey ?? null)
-          : null;
-
-        const stripeSession = await getStripeForApp(
-          appStripeKey,
-        ).checkout.sessions.retrieve(sessionId, {
-          expand: ["payment_intent"],
-        });
-        paymentStatus = stripeSession.payment_status;
-
-        // For metered/usage-based subscriptions there is no immediate charge:
-        // Stripe returns payment_status="unpaid" because billing is deferred to
-        // end of period. A completed session with no payment_intent error is
-        // still a success. Only treat "unpaid" as a decline when there is an
-        // actual payment_intent with a last_payment_error (i.e. card declined).
-        if (
-          paymentStatus === "unpaid" &&
-          stripeSession.status === "complete" &&
-          !(
-            stripeSession.payment_intent &&
-            typeof stripeSession.payment_intent !== "string" &&
-            stripeSession.payment_intent.last_payment_error
-          )
-        ) {
-          paymentStatus = "no_payment_required";
-        }
-
-        // Extract the specific decline reason from the payment intent so we
-        // can show a more actionable message (e.g. "card reported lost").
-        if (
-          paymentStatus === "unpaid" &&
-          stripeSession.payment_intent &&
-          typeof stripeSession.payment_intent !== "string"
-        ) {
-          const code =
-            stripeSession.payment_intent.last_payment_error?.decline_code ??
-            stripeSession.payment_intent.last_payment_error?.code;
-          if (code) declineCode = code;
-        }
-      } catch {
-        // If we can't retrieve the session (e.g. wrong key, expired), fall
-        // through to the success redirect — the webhook is the source of truth.
-      }
-    }
-
-    if (paymentStatus === "unpaid") {
-      const query = new URLSearchParams({ checkout_declined: declineCode });
+    if (outcome.result === "declined") {
+      const query = new URLSearchParams({
+        checkout_declined: outcome.declineCode,
+      });
       if (returnUrl) query.set("returnUrl", returnUrl);
       redirect(`/subscription?${query.toString()}`);
     }
   }
 
-  // Successful payment — always show the success banner on the subscription page
-  // first. If a returnUrl was provided, include it so the "Back" link returns
-  // the user to their app after they've seen the confirmation.
   const successQuery = new URLSearchParams({ checkout_success: "1" });
   if (returnUrl) successQuery.set("returnUrl", returnUrl);
   redirect(`/subscription?${successQuery.toString()}`);
