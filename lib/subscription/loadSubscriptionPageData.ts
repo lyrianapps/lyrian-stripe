@@ -36,6 +36,7 @@ async function loadAppPlans(appId: string) {
 async function loadSubscription(billingCustomerId: string) {
   return prisma.subscription.findFirst({
     where: { billingCustomerId },
+    orderBy: { updatedAt: "desc" },
   });
 }
 

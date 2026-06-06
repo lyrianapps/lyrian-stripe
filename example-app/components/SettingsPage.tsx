@@ -90,6 +90,10 @@ function PlanCard({
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
+const CHECKOUT_PENDING_KEY = "billing_checkout_pending";
+const POLL_INTERVAL_MS = 2_000;
+const POLL_TIMEOUT_MS = 30_000;
+
 export function SettingsPage() {
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -97,8 +101,17 @@ export function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [upgrading, setUpgrading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activating, setActivating] = useState(false);
 
   useEffect(() => {
+    const checkoutPending =
+      typeof window !== "undefined" &&
+      sessionStorage.getItem(CHECKOUT_PENDING_KEY) === "1";
+
+    if (checkoutPending) {
+      sessionStorage.removeItem(CHECKOUT_PENDING_KEY);
+    }
+
     Promise.all([
       fetch("/api/billing/status").then((r) => r.json()),
       fetch("/api/billing/usage").then((r) => r.json()),
@@ -113,6 +126,41 @@ export function SettingsPage() {
           setStatus(statusData);
           setUsage(usageData);
           setPlans(plansData.plans ?? []);
+
+          // If the user just returned from checkout but the webhook hasn't
+          // fired yet, the plan will still be free_trial. Poll until it updates.
+          if (
+            checkoutPending &&
+            (statusData.plan == null || statusData.plan === "free_trial")
+          ) {
+            setActivating(true);
+            const deadline = Date.now() + POLL_TIMEOUT_MS;
+            const interval = setInterval(async () => {
+              if (Date.now() >= deadline) {
+                clearInterval(interval);
+                setActivating(false);
+                return;
+              }
+              try {
+                const res = await fetch("/api/billing/status");
+                const data: SubscriptionStatus = await res.json();
+                if (data.plan && data.plan !== "free_trial") {
+                  clearInterval(interval);
+                  setActivating(false);
+                  // Refresh all data now that the subscription is live
+                  const [newUsage, newPlans] = await Promise.all([
+                    fetch("/api/billing/usage").then((r) => r.json()),
+                    fetch("/api/billing/plans").then((r) => r.json()),
+                  ]);
+                  setStatus(data);
+                  setUsage(newUsage);
+                  setPlans((newPlans as { plans: PlanOption[] }).plans ?? []);
+                }
+              } catch {
+                // ignore transient fetch errors during polling
+              }
+            }, POLL_INTERVAL_MS);
+          }
         },
       )
       .finally(() => setLoading(false));
@@ -133,6 +181,7 @@ export function SettingsPage() {
         setUpgrading(false);
         return;
       }
+      sessionStorage.setItem(CHECKOUT_PENDING_KEY, "1");
       window.location.href = data.url;
     } catch {
       setError("Something went wrong. Please try again.");
@@ -144,6 +193,34 @@ export function SettingsPage() {
     return (
       <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
         Loading…
+      </div>
+    );
+  }
+
+  if (activating) {
+    return (
+      <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-500 text-sm">
+        <svg
+          className="animate-spin h-6 w-6 text-blue-500"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+          />
+        </svg>
+        <span>Activating your subscription…</span>
       </div>
     );
   }
