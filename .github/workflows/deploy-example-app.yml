@@ -151,6 +151,24 @@ jobs:
         echo "Waiting for billing service deployment to settle..."
         sleep 60
 
+    - name: Warm up example-app database connection
+      run: |
+        EXAMPLE_URL="https://lyrian-example-app-494926016713.us-central1.run.app"
+        echo "Polling $EXAMPLE_URL/api/health until DB is reachable..."
+        for i in $(seq 1 12); do
+          STATUS=$(curl -fsS -o /tmp/health.json -w "%{http_code}" "$EXAMPLE_URL/api/health" || echo "000")
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ example-app DB is healthy (attempt $i)"
+            cat /tmp/health.json
+            exit 0
+          fi
+          echo "⏳ Attempt $i: status=$STATUS — example-app DB not ready yet, sleeping 5s"
+          sleep 5
+        done
+        echo "❌ example-app DB never became healthy after 12 attempts (~60s)"
+        cat /tmp/health.json || true
+        exit 1
+
     - name: Run E2E tests
       working-directory: example-app
       run: npx playwright test --config=playwright.config.ts

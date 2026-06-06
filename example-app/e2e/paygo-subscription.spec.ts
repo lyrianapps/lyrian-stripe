@@ -133,8 +133,9 @@ test("register → paygo upgrade → redirected back to settings", async ({
   }
 
   // Card number — Stripe Checkout renders card fields as regular inputs (not iframes)
+  // Stripe Checkout's first-paint can take 20-30s in CI cold runs
   const cardNumberInput = page.getByRole("textbox", { name: "Card number" });
-  await expect(cardNumberInput).toBeVisible({ timeout: 15000 });
+  await expect(cardNumberInput).toBeVisible({ timeout: 45000 });
   await cardNumberInput.fill("4242424242424242");
 
   const expiryInput = page.getByRole("textbox", { name: "Expiration" });
