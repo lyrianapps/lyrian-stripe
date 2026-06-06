@@ -37,11 +37,13 @@ async function registerAndSetupPaygo(
 ): Promise<{ userId: string; billingOrigin: string }> {
   const email = uniqueEmail(emailTag);
 
-  // Register
+  // Register as metered (Pay as You Go) user
   await page.goto("/login");
   await expect(page.locator("text=Create account")).toBeVisible();
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', TEST_PASSWORD);
+  // Select Pay as You Go billing type so session has billingType=metered
+  await page.click('button:has-text("Pay as You Go")');
   await page.click('button[type="submit"]:has-text("Create account")');
   await page.waitForURL("/", { timeout: 15000 });
 
@@ -151,12 +153,15 @@ test.describe("Paygo — usage meter display", () => {
     await expect(page.locator("text=Usage test todo 1")).toBeVisible({
       timeout: 5000,
     });
+    // Wait for input to clear before next todo
+    await expect(todoInput).toHaveValue("", { timeout: 3000 });
 
     await todoInput.fill("Usage test todo 2");
     await page.keyboard.press("Enter");
     await expect(page.locator("text=Usage test todo 2")).toBeVisible({
       timeout: 5000,
     });
+    await expect(todoInput).toHaveValue("", { timeout: 3000 });
 
     await page.screenshot({
       path: path.join("e2e", "screenshots", "usage-03-todos-created.png"),
