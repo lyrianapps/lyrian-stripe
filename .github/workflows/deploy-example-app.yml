@@ -50,11 +50,12 @@ jobs:
           --platform managed \
           --allow-unauthenticated \
           --add-cloudsql-instances ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
-          --min-instances=0 \
+          --min-instances=1 \
           --max-instances=3 \
           --memory=512Mi \
           --cpu=1 \
-          --timeout=30 \
+          --timeout=60 \
+          --cpu-boost \
           --port=3001 \
           --set-env-vars "NODE_ENV=production" \
           --set-secrets "DATABASE_URL=EXAMPLE_APP_DATABASE_URL:latest,BILLING_API_URL=EXAMPLE_APP_BILLING_API_URL:latest,BILLING_API_KEY=EXAMPLE_APP_BILLING_API_KEY:latest,BILLING_APP_ID=EXAMPLE_APP_BILLING_APP_ID:latest,SAAS_JWT_SECRET=EXAMPLE_APP_SAAS_JWT_SECRET:latest,APP_URL=EXAMPLE_APP_PUBLIC_URL:latest"

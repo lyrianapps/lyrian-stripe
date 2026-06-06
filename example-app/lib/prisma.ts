@@ -6,16 +6,18 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrisma(): PrismaClient {
-  // Cloud Run + Cloud SQL via Unix socket: idle pg connections silently die
-  // (CPU-throttled-at-idle policy + Cloud SQL proxy socket closures), and
-  // the next request gets "connect EIO /cloudsql/.../.s.PGSQL.5432".
-  // We aggressively short-circuit any pooling so each request gets a
-  // fresh connection that's known to be alive.
+  // Cloud Run + Cloud SQL via Unix socket: idle pg connections can silently
+  // die (CPU-throttled-at-idle policy + Cloud SQL proxy socket closures),
+  // causing "connect EIO /cloudsql/.../.s.PGSQL.5432" on the next request.
+  //
+  // Pool settings tuned for Cloud Run's 30s request budget: small pool
+  // (Cloud Run is single-concurrency), moderate idle timeout, modest
+  // connect timeout so retries can fit within the request deadline.
   const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL!,
-    max: 1,
-    idleTimeoutMillis: 1, // close idle sockets immediately
-    connectionTimeoutMillis: 10_000,
+    max: 3,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
     allowExitOnIdle: true,
   });
   return new PrismaClient({ adapter });
