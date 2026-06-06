@@ -69,20 +69,52 @@ export async function POST(req: NextRequest) {
   // (only the Prisma client's @updatedAt). With the new prisma-client
   // generator + adapter-pg this is not always populated, causing a NOT NULL
   // violation that surfaces as an opaque 500.
+  //
+  // Cloud Run + Cloud SQL also intermittently serves stale pg pool sockets
+  // ("connect EIO /cloudsql/.../.s.PGSQL.5432"). Retry once on transient
+  // connection errors to absorb that.
+  function isTransientConnError(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err);
+    return (
+      msg.includes("EIO") ||
+      msg.includes("ECONNRESET") ||
+      msg.includes("ETIMEDOUT") ||
+      msg.includes("Connection terminated")
+    );
+  }
+
   let todo;
   try {
     todo = await prisma.todo.create({
       data: { text, userId, updatedAt: new Date() },
     });
   } catch (err) {
-    logPost.error({ err, userId }, "Failed to create todo");
-    return NextResponse.json(
-      {
-        error: "Failed to create todo",
-        message: err instanceof Error ? err.message : String(err),
-      },
-      { status: 500 },
-    );
+    if (isTransientConnError(err)) {
+      logPost.warn({ err }, "Transient DB connection error, retrying once");
+      try {
+        todo = await prisma.todo.create({
+          data: { text, userId, updatedAt: new Date() },
+        });
+      } catch (err2) {
+        logPost.error({ err: err2, userId }, "Failed to create todo (retry)");
+        return NextResponse.json(
+          {
+            error: "Failed to create todo",
+            message: err2 instanceof Error ? err2.message : String(err2),
+          },
+          { status: 500 },
+        );
+      }
+    } else {
+      logPost.error({ err, userId }, "Failed to create todo");
+      return NextResponse.json(
+        {
+          error: "Failed to create todo",
+          message: err instanceof Error ? err.message : String(err),
+        },
+        { status: 500 },
+      );
+    }
   }
 
   logPost.info(
