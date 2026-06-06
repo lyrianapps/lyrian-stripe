@@ -25,6 +25,12 @@ export const planFormatters: Record<string, PlanFormatter> = {
     }
     return "Pro";
   },
+  paygo: (start, end) => {
+    if (start && end) {
+      return `Pay As You Go (${moment(start).format("MMM D")} - ${moment(end).format("MMM D, YYYY")})`;
+    }
+    return "Pay As You Go";
+  },
 };
 
 export function formatPeriodStatus(

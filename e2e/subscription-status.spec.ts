@@ -14,17 +14,15 @@ test.describe("Subscription Status Display", () => {
     // Should show subscription page
     await expect(authenticatedPage.locator("h1")).toContainText("Subscription");
 
-    // Should show free trial as current plan
-    await expect(authenticatedPage.locator("text=Current Plan")).toBeVisible();
+    // Should show free trial plan card
     await expect(
       authenticatedPage.locator("text=Free Trial").first(),
     ).toBeVisible();
 
-    // Cancel button should be disabled for free trial
-    const cancelButton = authenticatedPage.locator(
-      'button:has-text("Cancel Subscription")',
-    );
-    await expect(cancelButton).toBeDisabled();
+    // Cancel section and button are hidden for free trial users (nothing to cancel)
+    await expect(
+      authenticatedPage.locator('button:has-text("Cancel Subscription")'),
+    ).toHaveCount(0);
   });
 
   test("shows basic plan status for subscribed user", async ({

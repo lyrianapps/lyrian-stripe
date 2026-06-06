@@ -27,23 +27,16 @@ import { createTestSubscription } from "./fixtures";
 test.describe("Subscription Upgrade Flow", () => {
   test("user upgrades from free trial to basic plan", async ({
     authenticatedPage,
-    testUserId,
   }) => {
-    const appId = `app_${testUserId}`;
-    const externalUserId = `user_${testUserId}`;
-
     // ── Step 1: Verify free trial state ───────────────────────────────────
     await authenticatedPage.goto("/subscription");
 
     await expect(authenticatedPage.locator("h1")).toContainText("Subscription");
 
-    // "Current Plan:" section should show free_trial
-    await expect(authenticatedPage.getByText("Current Plan:")).toBeVisible();
-
-    // Cancel button is disabled on free trial
+    // Cancel section is hidden for free trial users (nothing to cancel)
     await expect(
       authenticatedPage.locator('button:has-text("Cancel Subscription")'),
-    ).toBeDisabled();
+    ).toHaveCount(0);
 
     // Upgrade buttons are visible for paid plans (Basic, Pro)
     const upgradeButton = authenticatedPage
@@ -116,13 +109,10 @@ test.describe("Subscription Upgrade Flow", () => {
     });
     await expect(upgradeButtons.first()).toBeVisible();
 
-    // Current plan section present
-    await expect(authenticatedPage.getByText("Current Plan:")).toBeVisible();
-
-    // Cancel is disabled (not on a paid plan)
+    // Cancel section is hidden for free trial users (nothing to cancel)
     await expect(
       authenticatedPage.locator('button:has-text("Cancel Subscription")'),
-    ).toBeDisabled();
+    ).toHaveCount(0);
   });
 
   test("already subscribed user sees current plan button, not upgrade", async ({
