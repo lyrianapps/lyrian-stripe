@@ -103,16 +103,13 @@ test.describe("Paygo — usage meter display", () => {
       fullPage: true,
     });
 
-    // Usage count and label are in sibling spans inside a flex row.
-    // 'todos this month' is the unique anchor; the count is the adjacent span.
+    // The metered usage count lives in a span.text-2xl (unique on this page).
+    // Using span.text-2xl avoids strict-mode violations caused by the email
+    // in the navbar whose timestamp substring may contain the seed digit.
     await expect(page.locator("text=todos this month")).toBeVisible({
       timeout: 10000,
     });
-    const usageRow = page
-      .locator("div")
-      .filter({ has: page.locator("text=todos this month") })
-      .first();
-    await expect(usageRow.locator(`text=${SEED_COUNT}`)).toBeVisible();
+    await expect(page.locator("span.text-2xl")).toHaveText(String(SEED_COUNT));
 
     // Estimated cost: 5 × $0.04 = $0.20
     await expect(page.locator("text=0.20")).toBeVisible();
@@ -131,11 +128,7 @@ test.describe("Paygo — usage meter display", () => {
     await expect(page.locator("text=todos this month")).toBeVisible({
       timeout: 10000,
     });
-    const usageRow0 = page
-      .locator("div")
-      .filter({ has: page.locator("text=todos this month") })
-      .first();
-    await expect(usageRow0.locator(`text=${SEED_COUNT}`)).toBeVisible();
+    await expect(page.locator("span.text-2xl")).toHaveText(String(SEED_COUNT));
 
     // Create 2 todos via the home page
     await page.goto("/");
@@ -150,18 +143,19 @@ test.describe("Paygo — usage meter display", () => {
 
     await todoInput.fill("Usage test todo 1");
     await page.keyboard.press("Enter");
+    // Metered users hit Stripe's meter API on each todo — allow extra time
     await expect(page.locator("text=Usage test todo 1")).toBeVisible({
-      timeout: 5000,
+      timeout: 20000,
     });
     // Wait for input to clear before next todo
-    await expect(todoInput).toHaveValue("", { timeout: 3000 });
+    await expect(todoInput).toHaveValue("", { timeout: 5000 });
 
     await todoInput.fill("Usage test todo 2");
     await page.keyboard.press("Enter");
     await expect(page.locator("text=Usage test todo 2")).toBeVisible({
-      timeout: 5000,
+      timeout: 20000,
     });
-    await expect(todoInput).toHaveValue("", { timeout: 3000 });
+    await expect(todoInput).toHaveValue("", { timeout: 5000 });
 
     await page.screenshot({
       path: path.join("e2e", "screenshots", "usage-03-todos-created.png"),
@@ -174,11 +168,9 @@ test.describe("Paygo — usage meter display", () => {
     await expect(page.locator("text=todos this month")).toBeVisible({
       timeout: 10000,
     });
-    const usageRowAfter = page
-      .locator("div")
-      .filter({ has: page.locator("text=todos this month") })
-      .first();
-    await expect(usageRowAfter.locator(`text=${expectedCount}`)).toBeVisible();
+    await expect(page.locator("span.text-2xl")).toHaveText(
+      String(expectedCount),
+    );
 
     await page.screenshot({
       path: path.join(
