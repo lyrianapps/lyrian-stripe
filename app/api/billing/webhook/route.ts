@@ -314,17 +314,12 @@ async function fetchBillingPeriodFromInvoice(
 
 const checkoutSteps = {
   /**
-   * Rejects non-subscription checkouts (e.g. one-time payments) and sessions
-   * where payment was not collected.
+   * Rejects non-subscription checkouts (e.g. one-time payments).
    *
-   * Stripe fires checkout.session.completed even when the initial payment fails
-   * (e.g. lost/stolen cards, Radar-blocked cards like 4100000000000019). In
-   * those cases the session has payment_status: "unpaid". We halt immediately
-   * here — before any Stripe API calls — so we never persist a subscription
-   * for a session that has no successful payment.
-   *
-   * "no_payment_required" is allowed through: it indicates a $0 / trial
-   * subscription where no upfront charge was needed.
+   * NOTE: We do NOT halt on payment_status: "unpaid" here. Metered subscriptions
+   * legitimately have payment_status: "unpaid" because there is no upfront charge
+   * — Stripe bills at the end of the billing period. Real card declines are caught
+   * downstream in validatePaymentSucceeded by checking subscription.status === "incomplete".
    */
   validateSession: async (
     ctx: PipelineContext<CheckoutPipelineData>,
@@ -333,16 +328,6 @@ const checkoutSteps = {
 
     if (session.mode !== "subscription" || !session.subscription) {
       return halt(ctx, "Not a subscription checkout");
-    }
-
-    if (session.payment_status === "unpaid") {
-      logger.warn(
-        `[checkout] Session ${session.id} has payment_status "unpaid" — payment was not collected (declined / blocked card). Skipping persistence.`,
-      );
-      return halt(
-        ctx,
-        `Payment not collected (session payment_status: unpaid)`,
-      );
     }
 
     return log(ctx, `[checkout] Validating session ${session.id}`);
