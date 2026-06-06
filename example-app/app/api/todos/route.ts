@@ -86,12 +86,12 @@ export async function POST(req: NextRequest) {
 
   let todo;
   let lastErr: unknown;
-  const MAX_ATTEMPTS = 3;
-  // Backoff: 0ms (initial), 500ms, 2000ms — gives the Cloud SQL Auth Proxy
-  // sidecar time to recover from a transient socket failure. Total worst
-  // case: ~2.5s of waits + 3 × 5s connect timeout = ~17.5s, well under
-  // Cloud Run's 30s request budget.
-  const BACKOFF_MS = [0, 500, 2000];
+  const MAX_ATTEMPTS = 4;
+  // Backoff: 0/1s/3s/5s — gives the Cloud SQL Auth Proxy sidecar enough
+  // time to come up after a Cloud Run cold start (~5-10s typical). Total
+  // worst case: 9s of waits + 4 × 5s connect timeout = ~29s, just under
+  // Cloud Run's 60s request budget.
+  const BACKOFF_MS = [0, 1_000, 3_000, 5_000];
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (BACKOFF_MS[attempt - 1] > 0) {
       await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1]));

@@ -56,3 +56,39 @@ export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
     return client[prop as string];
   },
 });
+
+/**
+ * Eager warmup. Calling $connect() at module load makes the first incoming
+ * request wait for the Cloud SQL Auth Proxy sidecar to come up, instead of
+ * racing it and getting "connect EIO". Failures here are swallowed because
+ * the per-request retry loop is the actual safety net.
+ *
+ * Polls because on a cold-started Cloud Run instance the proxy can take
+ * several seconds to mount the Unix socket and start accepting connections.
+ */
+async function warmup() {
+  const MAX_TRIES = 10;
+  const BACKOFF_MS = 1_000;
+  for (let i = 1; i <= MAX_TRIES; i++) {
+    try {
+      // $queryRaw is a real round-trip; $connect() can be lazy with adapters.
+      await getPrisma().$queryRaw`SELECT 1`;
+      return;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (i === MAX_TRIES) {
+        console.warn(`[prisma] warmup gave up after ${MAX_TRIES} tries:`, msg);
+        return;
+      }
+      console.warn(
+        `[prisma] warmup attempt ${i}/${MAX_TRIES} failed (${msg}); retrying in ${BACKOFF_MS}ms`,
+      );
+      await resetPrisma();
+      await new Promise((r) => setTimeout(r, BACKOFF_MS));
+    }
+  }
+}
+
+if (process.env.NODE_ENV === "production") {
+  void warmup();
+}
