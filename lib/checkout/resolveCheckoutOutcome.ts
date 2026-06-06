@@ -80,15 +80,23 @@ function resolvePaymentStatus(
 
 /**
  * If the user arrived directly from Stripe (no prior portal-redirect visit),
- * they have no billing_session cookie. Reconstruct one from the Stripe session
- * metadata so /subscription can render without redirecting to /unauthorized.
+ * they have no billing_session cookie — or have an expired one. Reconstruct
+ * a fresh session from the Stripe session metadata so /subscription can render
+ * without redirecting to /unauthorized.
  */
 export async function ensureBillingSession(
   sessionId: string,
   appId: string | undefined,
 ): Promise<void> {
   const cookieStore = await cookies();
-  if (cookieStore.get("billing_session")?.value) return;
+  const existingToken = cookieStore.get("billing_session")?.value;
+
+  // If a cookie exists, verify it's still valid in the DB before trusting it.
+  if (existingToken) {
+    const { getSession } = await import("@/lib/session");
+    const valid = await getSession(existingToken).catch(() => null);
+    if (valid) return; // session is live — nothing to do
+  }
 
   try {
     const stripeKey = await getAppStripeKey(appId);
