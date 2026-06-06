@@ -12,31 +12,24 @@ const log = logger.child({ route: "GET /api/health" });
  * the cold-start cost is paid before user-facing tests run, instead of
  * racing the proxy on the first POST /api/todos.
  *
- * Retries internally with backoff because on a fresh cold start the
- * proxy can take 10-30s to mount the Unix socket.
+ * The outer CI loop is responsible for polling across cold-start; this
+ * endpoint just makes one good-faith attempt and returns 503 (with the
+ * actual error in the body) when the DB still isn't ready.
  */
 export async function GET() {
-  const MAX_ATTEMPTS = 6;
-  const BACKOFF_MS = [0, 2_000, 4_000, 6_000, 8_000, 10_000];
-  let lastErr: unknown;
-  for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    if (BACKOFF_MS[i] > 0) {
-      await new Promise((r) => setTimeout(r, BACKOFF_MS[i]));
-    }
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      return NextResponse.json({ status: "ok", attempts: i + 1 });
-    } catch (err) {
-      lastErr = err;
-      log.warn({ err, attempt: i + 1 }, "Health check DB query failed");
-      await resetPrisma();
-    }
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return NextResponse.json({ status: "ok" });
+  } catch (err) {
+    log.warn({ err }, "Health check DB query failed");
+    await resetPrisma();
+    return NextResponse.json(
+      {
+        status: "unhealthy",
+        error: err instanceof Error ? err.message : String(err),
+        databaseUrlConfigured: Boolean(process.env.DATABASE_URL),
+      },
+      { status: 503 },
+    );
   }
-  return NextResponse.json(
-    {
-      status: "unhealthy",
-      error: lastErr instanceof Error ? lastErr.message : String(lastErr),
-    },
-    { status: 503 },
-  );
 }
