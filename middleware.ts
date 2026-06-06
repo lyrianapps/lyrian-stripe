@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 export function middleware(req: NextRequest) {
   try {
-    if (req.nextUrl.pathname.startsWith("/subscription")) {
+    if (
+      req.nextUrl.pathname.startsWith("/subscription") &&
+      !req.nextUrl.pathname.startsWith("/subscription/success")
+    ) {
       const sessionId = req.cookies.get("billing_session")?.value;
 
       if (!sessionId) {
