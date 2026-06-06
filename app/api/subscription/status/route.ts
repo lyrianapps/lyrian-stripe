@@ -34,7 +34,7 @@ const statusHandler = withApiKey(async (request: NextRequest) => {
     include: {
       app: { select: { id: true } },
       subscriptions: {
-        where: { status: { notIn: ["canceled", "incomplete"] } },
+        where: { status: { not: "incomplete" } },
         orderBy: { updatedAt: "desc" },
         select: {
           plan: true,
