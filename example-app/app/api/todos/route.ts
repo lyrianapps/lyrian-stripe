@@ -65,9 +65,25 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Step 2: Create the todo ───────────────────────────────────────────────
-  const todo = await prisma.todo.create({
-    data: { text, userId },
-  });
+  // Set updatedAt explicitly because the migration column has no DB default
+  // (only the Prisma client's @updatedAt). With the new prisma-client
+  // generator + adapter-pg this is not always populated, causing a NOT NULL
+  // violation that surfaces as an opaque 500.
+  let todo;
+  try {
+    todo = await prisma.todo.create({
+      data: { text, userId, updatedAt: new Date() },
+    });
+  } catch (err) {
+    logPost.error({ err, userId }, "Failed to create todo");
+    return NextResponse.json(
+      {
+        error: "Failed to create todo",
+        message: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 },
+    );
+  }
 
   logPost.info(
     { todoId: todo.id, plan: usage.plan, used: usage.used },
