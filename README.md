@@ -532,6 +532,270 @@ Save the `price_xxx` ID — this is your `stripePriceId` for the paygo plan.
 ```
 
 ```bash
+npx tsx scripts/create-app.ts <app-id> "<app-name>" ./paygo-plan.json
+```
+
+**Updating plans for an existing app**
+
+Re-running `create-app.ts` (or the `register-app` workflow) with a new plans file on an existing app will upsert the plans in the file **and deactivate any plans that are no longer present**. This means switching from paygo to flat-rate (or vice versa) is as simple as providing a new plans file — old plan cards disappear from the billing portal automatically.
+
+### Webhook: Billing Period Storage (Stripe SDK v20)
+
+> ⚠️ **Stripe SDK v20 change:** `current_period_start` and `current_period_end` moved from `Stripe.Subscription` to `Stripe.SubscriptionItem`. The webhook stores billing period from `subscription.items.data[0]`:
+
+```typescript
+// app/api/billing/webhook/route.ts — fetchBillingPeriod step
+const firstItem = stripeSubscription.items.data[0];
+const period: BillingPeriod = {
+  start: new Date(firstItem.current_period_start * 1000),
+  end: new Date(firstItem.current_period_end * 1000),
+};
+```
+
+For metered subscriptions there is no upfront invoice, so there is no `latest_invoice` to fall back to for the period end. Using `items.data[0]` is the only reliable source and correctly reflects the full billing window (e.g. Jun 6 – Jul 6) rather than collapsing start and end to the same day.
+
+### Subscription Status API
+
+**GET `/api/subscription/status`** returns the most meaningful subscription record when a user has multiple (e.g. a stale `free_trial` record alongside a new active `paygo` subscription).
+
+**Priority sort:** `active > past_due > trialing > (other)` — ensures an active paid subscription is always surfaced over a stale trial record.
+
+**Expiry logic:** A subscription is only considered expired when its `currentPeriodEnd` is in the past **and** its Stripe status is not `active`. Active subscriptions trust Stripe's status directly — `currentPeriodEnd` may be temporarily stale on records written before a webhook fires.
+
+```typescript
+// lib/subscription/statusLogic.ts
+export function isExpired(subscription: SubscriptionRow, now: Date): boolean {
+  return (
+    subscription.status !== "active" && subscription.currentPeriodEnd < now
+  );
+}
+```
+
+### Post-Checkout Webhook Race Condition
+
+After a successful Stripe Checkout, Stripe redirects the user back to your app before the `checkout.session.completed` webhook has been processed. This means the status API may still return `free_trial` for a few seconds after checkout.
+
+**Recommended pattern (used in the example app):**
+
+1. Before redirecting to Stripe, set a flag: `sessionStorage.setItem("billing_checkout_pending", "1")`
+2. On return, if the flag is set and status is still `free_trial`, start polling `/api/billing/status` every 2 seconds
+3. Stop polling when the plan changes or after 30 seconds
+4. Show a subtle inline notice ("Confirming your subscription…") during polling — do not block the full page
+
+```typescript
+// Set flag before redirect
+sessionStorage.setItem("billing_checkout_pending", "1");
+window.location.href = checkoutUrl;
+
+// On settings page load
+const checkoutPending = sessionStorage.getItem("billing_checkout_pending") === "1";
+sessionStorage.removeItem("billing_checkout_pending");
+
+if (checkoutPending && status.plan === "free_trial") {
+  // poll /api/billing/status every 2s until plan changes or 30s elapsed
+}
+```
+
+This avoids a confusing UI where the user sees "Free Trial" immediately after paying.
+
+### Integration: Reporting Usage from Your SaaS App
+
+Your SaaS app calls the usage endpoint every time a billable action occurs. The billing service handles enforcement and Stripe reporting automatically.
+
+```typescript
+// In your SaaS app — call this on every billable action
+async function reportVerification(userId: string): Promise<{ allowed: boolean }> {
+  const res = await fetch(`${BILLING_APP_URL}/api/usage/report`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": BILLING_API_KEY,
+    },
+    body: JSON.stringify({
+      appId: "your-app-id",
+      externalUserId: userId,
+      quantity: 1,        // number of units consumed
+    }),
+  });
+
+  const data = await res.json();
+  // data: { allowed, used, cap, remaining, plan, billingType, yearMonth }
+  return data;
+}
+
+// Usage in your route handler
+const usage = await reportVerification(user.id);
+
+if (!usage.allowed) {
+  return Response.json({
+    error: "Monthly verification limit reached",
+    used: usage.used,
+    cap: usage.cap,
+    upgradeUrl: getBillingPortalUrl(user.id),
+  }, { status: 402 });
+}
+
+// proceed with the verification...
+```
+
+**What happens inside the service per plan type:**
+
+| Customer plan | `freeUnitsPerMonth` set? | Stripe meter event fired?     | Blocked at cap? |
+| ------------- | ------------------------ | ----------------------------- | --------------- |
+| `free_trial`  | Yes (e.g. 500)           | No                            | Yes             |
+| `paygo`       | No                       | Yes (`billingType: metered`)  | No              |
+| `volume`      | No                       | Yes (`billingType: volume`)   | No              |
+| `basic`/`pro` | No                       | No (`billingType: flat_rate`) | No              |
+
+### Querying Current Usage (for dashboard display)
+
+```typescript
+// GET /api/usage/current?appId=xxx&externalUserId=xxx
+// Returns: { allowed, used, cap, remaining, plan, billingType, yearMonth }
+
+const usage = await fetch(
+  `${BILLING_APP_URL}/api/usage/current?appId=your-app-id&externalUserId=${userId}`,
+  { headers: { "x-api-key": BILLING_API_KEY } }
+).then(r => r.json());
+
+// Example response for a free-tier user at 312/500:
+// { allowed: true, used: 312, cap: 500, remaining: 188, plan: "free_trial", ... }
+
+// Example response for a paygo user:
+// { allowed: true, used: 4821, cap: null, remaining: null, plan: "paygo", ... }
+```
+
+### The Upgrade Moment
+
+The natural upgrade triggers are:
+
+1. **Free → Paygo:** `reportUsage()` returns `allowed: false`. Your SaaS shows a prompt pointing to the billing portal where the paygo plan is listed. User subscribes with one click via Stripe Checkout (metered price). From that point, `reportUsage()` fires Stripe meter events instead of checking caps.
+
+2. **Paygo → Volume:** Happens out-of-band — you reach out to customers consistently spending $400+/month on paygo and offer volume at half the rate. They subscribe to the volume plan through the portal. The local `MonthlyUsage` counter still tracks usage for your records; Stripe handles the billing via the volume meter.
+
+### How Billing Works End-to-End (Paygo)
+
+```
+Month start
+    │
+    ├── User runs 1,000 verifications
+    │      Each one → POST /api/usage/report
+    │                  → MonthlyUsage.unitCount += 1
+    │                  → stripe.billing.meterEvents.create("verifications", value=1)
+    │
+    ├── Stripe aggregates all meter events throughout the month
+    │
+Month end
+    │
+    └── Stripe generates invoice: 1,000 × $0.04 = $40.00
+           → charges customer's card on file
+           → fires invoice.payment_succeeded webhook
+           → billing service records PaymentEvent
+```
+
+The `MonthlyUsage` table in the database is the **local source of truth** for enforcement and dashboard display. Stripe meter events are the **billing source of truth**. The two are kept in sync on every `reportUsage()` call. If a Stripe meter event fails to fire (transient API error), the local counter still incremented — a background reconciliation job can replay missed events using the `MonthlyUsage` records.
+
+### Architecture
+
+```
+┌──────────────────────┐        ┌──────────────────────────────────────────┐
+│   Your SaaS App      │        │           Lyrian Billing Service         │
+│                      │        │                                          │
+│  user does action    │        │  POST /api/usage/report                  │
+│  (e.g. verification) │──────► │                                          │
+│                      │        │  1. Resolve customer's plan              │
+│  if !allowed:        │        │  2. Check freeUnitsPerMonth cap (free)   │
+│    show upgrade UI   │◄───────│  3. Increment MonthlyUsage counter       │
+│  else:               │        │  4. Fire Stripe meter event (paygo)      │
+│    proceed           │        │                                          │
+└──────────────────────┘        └────────────────────┬─────────────────────┘
+                                                     │
+                                                     │ meterEvents.create()
+                                                     ▼
+                                          ┌──────────────────┐
+                                          │      Stripe      │
+                                          │                  │
+                                          │  Aggregates      │
+                                          │  usage events    │
+                                          │  → bills at      │
+                                          │  period end      │
+                                          └──────────────────┘
+```
+
+### Stripe Setup (one-time per app)
+
+**1. Create a Billing Meter in Stripe**
+
+In your Stripe dashboard → **Billing → Meters → Create meter**, or via API:
+
+```bash
+stripe billing meters create \
+  --event-name verifications \
+  --display-name "Verifications" \
+  --default-aggregation[formula] sum
+```
+
+Save the `event_name` (e.g. `verifications`) — this goes in `AppPlan.stripeMeterEventName`.
+
+**2. Create a metered Price linked to that meter**
+
+In Stripe dashboard → **Products → Create product**, then add a recurring metered price:
+
+```
+Billing model: Usage-based
+Meter: verifications
+Unit amount: $0.04
+```
+
+Save the `price_xxx` ID — this is your `stripePriceId` for the paygo plan.
+
+**3. Register the plan in the billing service**
+
+```json
+// paygo-plan.json
+[
+  {
+    "planKey": "paygo",
+    "name": "Pay as you go",
+    "description": "Only pay for what you use — $0.04 per verification",
+    "price": 0,
+    "billingType": "metered",
+    "unitAmount": 4,
+    "freeUnitsPerMonth": null,
+    "stripeMeterEventName": "verifications",
+    "stripeProductId": "prod_YOUR_PAYGO_PRODUCT_ID",
+    "stripePriceId": "price_YOUR_PAYGO_PRICE_ID",
+    "sortOrder": 1
+  },
+  {
+    "planKey": "free_trial",
+    "name": "Free",
+    "description": "500 verifications/month, 1 project",
+    "price": 0,
+    "billingType": "flat_rate",
+    "freeUnitsPerMonth": 500,
+    "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
+    "stripePriceId": "price_YOUR_FREE_PRICE_ID",
+    "sortOrder": 0
+  },
+  {
+    "planKey": "volume",
+    "name": "Volume",
+    "description": "10,000 verifications/month minimum — $0.02/verification",
+    "price": 0,
+    "billingType": "volume",
+    "unitAmount": 2,
+    "minMonthlyUnits": 10000,
+    "freeUnitsPerMonth": null,
+    "stripeMeterEventName": "verifications",
+    "stripeProductId": "prod_YOUR_VOLUME_PRODUCT_ID",
+    "stripePriceId": "price_YOUR_VOLUME_PRICE_ID",
+    "sortOrder": 2
+  }
+]
+```
+
+```bash
 npx tsx scripts/add-plans.ts <app-id> ./paygo-plan.json
 ```
 

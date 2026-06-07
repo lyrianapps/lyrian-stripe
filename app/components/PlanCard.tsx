@@ -42,13 +42,9 @@ export function PlanCard({
       </div>
       <div className="mt-4 sm:mt-0">
         {current ? (
-          <Button
-            variant="filled"
-            disabled
-            iconLeft={<ArrowUpRight className="w-4 h-4" />}
-          >
-            Current Plan
-          </Button>
+          <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700">
+            Current plan
+          </span>
         ) : (
           <Button
             variant="outline"

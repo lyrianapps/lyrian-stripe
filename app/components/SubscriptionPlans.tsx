@@ -72,7 +72,6 @@ interface PlanListProps {
   plans: SubscriptionPlansProps["plans"];
   currentPlan: string;
   currentPriceId?: string | null;
-  checkoutSuccess?: boolean;
   loadingPriceId: string | null;
   onUpgrade: (priceId: string) => void;
 }
@@ -81,7 +80,6 @@ function PlanList({
   plans,
   currentPlan,
   currentPriceId,
-  checkoutSuccess,
   loadingPriceId,
   onUpgrade,
 }: PlanListProps) {
@@ -116,7 +114,6 @@ function PlanList({
           }
           onUpgrade={() => onUpgrade(plan.stripePriceId)}
           loading={loadingPriceId === plan.stripePriceId}
-          upgradeDisabled={checkoutSuccess}
         />
       ))}
     </>
@@ -300,7 +297,6 @@ export default function SubscriptionPlans({
           plans={plans}
           currentPlan={currentPlan}
           currentPriceId={currentPriceId}
-          checkoutSuccess={checkoutSuccess}
           loadingPriceId={loadingPriceId}
           onUpgrade={handleUpgrade}
         />
