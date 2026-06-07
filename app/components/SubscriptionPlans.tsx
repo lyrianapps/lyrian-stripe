@@ -6,6 +6,7 @@ import { PlanCard } from "@/app/components/PlanCard";
 import { XCircle } from "lucide-react";
 import {
   formatPeriodStatus,
+  formatBillingPeriod,
   formatExpirationDate,
 } from "@/lib/utils/planStatus";
 import { SubscriptionPlansProps } from "@/lib/utils/types";
@@ -140,17 +141,26 @@ function CancelSection({
   onCancel,
 }: CancelSectionProps) {
   const canCancel = currentPlan !== "free" && currentPlan !== "free_trial";
-  const periodLabel = formatPeriodStatus(
+  const planLabel = formatPeriodStatus(
     currentPlan,
+    currentPeriodStart,
+    currentPeriodEnd,
+  );
+  const billingPeriod = formatBillingPeriod(
     currentPeriodStart,
     currentPeriodEnd,
   );
 
   return (
     <div className="mt-10 border-t pt-6">
-      <Paragraph className="mb-2">
-        <span className="font-semibold">Current Plan:</span> {periodLabel}
+      <Paragraph className="mb-1">
+        <span className="font-semibold">Current Plan:</span> {planLabel}
       </Paragraph>
+      {billingPeriod && (
+        <Paragraph className="mb-2 text-sm text-gray-500">
+          Billing period: {billingPeriod}
+        </Paragraph>
+      )}
 
       {isCanceled && (
         <Paragraph className="mb-4 text-amber-600">

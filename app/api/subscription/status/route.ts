@@ -3,7 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { withApiKey } from "@/lib/auth/apiKey";
 import { withRateLimit } from "@/lib/middleware/rateLimit";
 import { getClientIdentifierWithUser } from "@/lib/rateLimit";
-import { Plan, SubscriptionStatus } from "@/lib/generated/prisma/enums";
+import { Plan } from "@/lib/generated/prisma/enums";
+import {
+  SubscriptionRow,
+  selectBestSubscription,
+  isExpired,
+  buildCancellationMessage,
+} from "@/lib/subscription/statusLogic";
 
 /**
  * Get subscription status for a user
@@ -16,18 +22,6 @@ import { Plan, SubscriptionStatus } from "@/lib/generated/prisma/enums";
  * - Expired: { plan: "free_trial", status: "expired", expiredAt: "...", previousPlan: "pro" }
  * - None:    { plan: null, status: null }
  */
-
-// =============================================================================
-// Types
-// =============================================================================
-
-type SubscriptionRow = {
-  plan: Plan;
-  status: SubscriptionStatus;
-  currentPeriodEnd: Date;
-  cancelAtPeriodEnd: boolean;
-  accessEndsAt: Date | null;
-};
 
 // =============================================================================
 // Data access
@@ -61,38 +55,6 @@ async function fetchSubscriptions(
 }
 
 // =============================================================================
-// Business logic
-// =============================================================================
-
-/** Prefer active > past_due > trialing to surface the most meaningful record. */
-const STATUS_PRIORITY: SubscriptionStatus[] = [
-  "active",
-  "past_due",
-  "trialing",
-];
-
-function selectBestSubscription(
-  subscriptions: SubscriptionRow[],
-): SubscriptionRow {
-  return subscriptions.slice().sort((a, b) => {
-    const ai = STATUS_PRIORITY.indexOf(a.status);
-    const bi = STATUS_PRIORITY.indexOf(b.status);
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-  })[0];
-}
-
-/**
- * A subscription is expired when its period end has passed and Stripe hasn't
- * marked it active. For active subs, trust Stripe's status — period end may be
- * stale on records created before the webhook stored items.data[0].current_period_end.
- */
-function isExpired(subscription: SubscriptionRow, now: Date): boolean {
-  return (
-    subscription.status !== "active" && subscription.currentPeriodEnd < now
-  );
-}
-
-// =============================================================================
 // Response builders
 // =============================================================================
 
@@ -113,7 +75,7 @@ function buildActiveResponse(subscription: SubscriptionRow) {
     ...(subscription.cancelAtPeriodEnd && {
       cancellation: {
         scheduledAt: accessEnd,
-        message: `Your subscription will lose access on ${accessEnd.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}.`,
+        message: buildCancellationMessage(accessEnd),
       },
     }),
   });

@@ -13,24 +13,10 @@ export const planFormatters: Record<string, PlanFormatter> = {
     }
     return "Free Trial";
   },
-  basic: (start, end) => {
-    if (start && end) {
-      return `Basic (${moment(start).format("MMM D")} - ${moment(end).format("MMM D, YYYY")})`;
-    }
-    return "Basic";
-  },
-  pro: (start, end) => {
-    if (start && end) {
-      return `Pro (${moment(start).format("MMM D")} - ${moment(end).format("MMM D, YYYY")})`;
-    }
-    return "Pro";
-  },
-  paygo: (start, end) => {
-    if (start && end) {
-      return `Pay As You Go (${moment(start).format("MMM D")} - ${moment(end).format("MMM D, YYYY")})`;
-    }
-    return "Pay As You Go";
-  },
+  basic: () => "Basic",
+  pro: () => "Pro",
+  paygo: () => "Pay As You Go",
+  volume: () => "Volume",
 };
 
 export function formatPeriodStatus(
@@ -42,6 +28,18 @@ export function formatPeriodStatus(
   return formatter
     ? formatter(currentPeriodStart, currentPeriodEnd)
     : "Unknown";
+}
+
+/**
+ * Formats a billing period as "MMM D – MMM D, YYYY" (e.g. "Jun 6 – Jul 6, 2026").
+ * Returns null when either date is missing.
+ */
+export function formatBillingPeriod(
+  start?: Date | string | null,
+  end?: Date | string | null,
+): string | null {
+  if (!start || !end) return null;
+  return `${moment(start).format("MMM D")} – ${moment(end).format("MMM D, YYYY")}`;
 }
 
 /** Formats the expiration date for display */
