@@ -52,7 +52,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     permissions:
-      contents: write # needed to commit & push the plans file deletion
 
     steps:
     - name: Checkout
@@ -138,21 +137,3 @@ jobs:
         echo ""
         echo "⚠️  IMPORTANT: Copy the API key from the output above!"
         echo "⚠️  It will NOT be shown again!"
-
-    - name: Delete plans file from repo
-      if: success()
-      run: |
-        FILE="./${{ inputs.plans_file }}"
-        if [ ! -f "$FILE" ]; then
-          echo "ℹ️  Plans file '${{ inputs.plans_file }}' not found in repo — nothing to delete."
-          exit 0
-        fi
-
-        git config user.name  "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-
-        git rm "$FILE"
-        git commit -m "chore: remove ${{ inputs.plans_file }} after registering ${{ inputs.app_id }}"
-        git push origin HEAD:${{ github.ref_name }}
-
-        echo "✅ Deleted ${{ inputs.plans_file }} from the repo."
