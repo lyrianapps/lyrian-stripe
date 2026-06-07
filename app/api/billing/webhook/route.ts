@@ -513,30 +513,22 @@ const checkoutSteps = {
     };
   },
 
-  /** Resolves the billing period start/end from the invoice; falls back to subscription start date. */
+  /** Resolves the billing period start/end from the Stripe subscription's current period fields. */
   fetchBillingPeriod: async (
     ctx: PipelineContext<CheckoutPipelineData>,
   ): Promise<PipelineContext<CheckoutPipelineData>> => {
-    const { stripeSubscription, appStripeSecretKey } = ctx.data;
+    const { stripeSubscription } = ctx.data;
 
-    const invoiceId = extractInvoiceId(stripeSubscription!.latest_invoice);
-    let period: BillingPeriod;
-
-    if (invoiceId) {
-      const fetched = await fetchBillingPeriodFromInvoice(
-        invoiceId,
-        appStripeSecretKey,
-      );
-      period = fetched ?? {
-        start: new Date(stripeSubscription!.start_date * 1000),
-        end: new Date(stripeSubscription!.start_date * 1000),
-      };
-    } else {
-      period = {
-        start: new Date(stripeSubscription!.start_date * 1000),
-        end: new Date(stripeSubscription!.start_date * 1000),
-      };
-    }
+    // In Stripe SDK v20, current_period_start/end are on SubscriptionItem, not
+    // Subscription. Use the first item's period — always correct and present.
+    // For metered subscriptions there is no upfront invoice, so we must not
+    // fall back to start_date for the end (that would make currentPeriodEnd
+    // equal to today and trigger a false "expired" check in the status route).
+    const firstItem = stripeSubscription!.items.data[0];
+    const period: BillingPeriod = {
+      start: new Date(firstItem.current_period_start * 1000),
+      end: new Date(firstItem.current_period_end * 1000),
+    };
 
     return {
       ...ctx,

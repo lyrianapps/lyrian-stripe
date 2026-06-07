@@ -68,9 +68,14 @@ const statusHandler = withApiKey(async (request: NextRequest) => {
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   })[0];
 
-  // Check if subscription has expired
+  // Only treat a subscription as expired if Stripe itself hasn't marked it
+  // active/trialing AND the period end has passed. An active subscription is
+  // never expired regardless of currentPeriodEnd — Stripe's status is authoritative.
   const now = new Date();
-  const isExpired = subscription.currentPeriodEnd < now;
+  const isExpired =
+    subscription.status !== "active" &&
+    subscription.status !== "trialing" &&
+    subscription.currentPeriodEnd < now;
 
   if (isExpired) {
     return NextResponse.json({
