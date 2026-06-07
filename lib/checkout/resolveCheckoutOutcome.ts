@@ -87,7 +87,7 @@ function resolvePaymentStatus(
 export async function ensureBillingSession(
   sessionId: string,
   appId: string | undefined,
-): Promise<void> {
+): Promise<{ billingType?: string } | void> {
   const cookieStore = await cookies();
   const existingToken = cookieStore.get("billing_session")?.value;
 
@@ -95,7 +95,20 @@ export async function ensureBillingSession(
   if (existingToken) {
     const { getSession } = await import("@/lib/session");
     const valid = await getSession(existingToken).catch(() => null);
-    if (valid) return; // session is live — nothing to do
+    if (valid) {
+      // Still read billingType from Stripe metadata even for an existing session
+      // so the caller can pass it along to the redirect URL.
+      try {
+        const stripeKey = await getAppStripeKey(appId);
+        const s =
+          await getStripeForApp(stripeKey).checkout.sessions.retrieve(
+            sessionId,
+          );
+        return { billingType: s.metadata?.billingType ?? undefined };
+      } catch {
+        return;
+      }
+    }
   }
 
   try {
@@ -119,6 +132,8 @@ export async function ensureBillingSession(
       path: "/",
       maxAge: 60 * 60,
     });
+
+    return { billingType: stripeSession.metadata?.billingType ?? undefined };
   } catch {
     // Best-effort — /subscription will redirect to /unauthorized if it fails.
   }

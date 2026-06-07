@@ -25,10 +25,13 @@ export async function GET(req: NextRequest) {
 
   const origin = process.env.BILLING_APP_URL ?? req.nextUrl.origin;
 
+  let billingType: string | undefined;
+
   if (sessionId) {
     // Ensure billing_session cookie is set. Route Handlers can set cookies
     // reliably — unlike Server Components, which can only read them.
-    await ensureBillingSession(sessionId, appId);
+    const billingSession = await ensureBillingSession(sessionId, appId);
+    billingType = billingSession?.billingType;
 
     const testOverrides =
       process.env.ENABLE_E2E_SHORTCUTS === "true"
@@ -58,6 +61,7 @@ export async function GET(req: NextRequest) {
 
   const successQuery = new URLSearchParams({ checkout_success: "1" });
   if (returnUrl) successQuery.set("returnUrl", returnUrl);
+  if (billingType) successQuery.set("billingType", billingType);
   return NextResponse.redirect(
     `${origin}/subscription?${successQuery.toString()}`,
   );
