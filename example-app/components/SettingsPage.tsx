@@ -254,7 +254,11 @@ export function SettingsPage() {
 
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800 capitalize">
-            {currentPlan.replace(/_/g, " ")}
+            {currentPlan === "paygo"
+              ? "Pay As You Go"
+              : currentPlan === "volume"
+                ? "Volume"
+                : currentPlan.replace(/_/g, " ")}
           </span>
           {status?.status && (
             <span

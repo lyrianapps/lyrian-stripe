@@ -25,6 +25,8 @@ export const Plan = {
   free_trial: "free_trial",
   basic: "basic",
   pro: "pro",
+  paygo: "paygo",
+  volume: "volume",
 } as const;
 export type Plan = (typeof Plan)[keyof typeof Plan];
 
@@ -64,7 +66,7 @@ export type UsageResult = {
 };
 
 const subscriptionStatusSchema = z.object({
-  plan: z.enum(["free_trial", "basic", "pro"]).nullable(),
+  plan: z.enum(["free_trial", "basic", "pro", "paygo", "volume"]).nullable(),
   status: z
     .enum([
       "active",
@@ -76,7 +78,9 @@ const subscriptionStatusSchema = z.object({
     ])
     .nullable(),
   expiredAt: z.string().optional(),
-  previousPlan: z.enum(["free_trial", "basic", "pro"]).optional(),
+  previousPlan: z
+    .enum(["free_trial", "basic", "pro", "paygo", "volume"])
+    .optional(),
   cancellation: z
     .object({
       scheduledAt: z.string(),
