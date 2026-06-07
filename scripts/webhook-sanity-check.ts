@@ -19,35 +19,23 @@ import crypto from "crypto";
 import https from "https";
 import http from "http";
 import { URL } from "url";
-import { prisma } from "../lib/prisma";
 
 async function main() {
   const billingAppUrl = process.env.BILLING_APP_URL;
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!billingAppUrl) {
     console.error("Error: BILLING_APP_URL is not set");
     process.exit(1);
   }
 
-  // Find the first app with a webhook secret configured
-  const app = await prisma.app.findFirst({
-    where: { stripeWebhookSecret: { not: null } },
-    select: { id: true, stripeWebhookSecret: true },
-  });
-
-  await prisma.$disconnect();
-
-  if (!app?.stripeWebhookSecret) {
+  if (!secret) {
     console.warn(
-      "No app with a stripeWebhookSecret found in the DB — skipping sanity check.\n" +
-        "Register an app with a webhook secret via the register-app workflow first.",
+      "STRIPE_WEBHOOK_SECRET is not set — skipping sanity check.\n" +
+        "Add STRIPE_WEBHOOK_SECRET to GCP Secret Manager and the deploy workflow.",
     );
     process.exit(0);
   }
-
-  console.log(`Using webhook secret from app: ${app.id}`);
-
-  const secret = app.stripeWebhookSecret;
   const endpoint = `${billingAppUrl}/api/billing/webhook`;
 
   // Build a minimal Stripe-shaped ping event

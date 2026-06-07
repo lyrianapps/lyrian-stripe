@@ -117,7 +117,7 @@ jobs:
           --min-instances=1 \
           --add-cloudsql-instances ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
           --set-env-vars "NODE_ENV=production,BILLING_APP_URL=${{ secrets.BILLING_APP_URL }},ENABLE_E2E_SHORTCUTS=true" \
-          --set-secrets "DATABASE_URL=DATABASE_URL:latest,SAAS_JWT_SECRET=SAAS_JWT_SECRET:latest,CRON_SECRET=CRON_SECRET:latest,RESEND_API_KEY=RESEND_API_KEY:latest"
+          --set-secrets "DATABASE_URL=DATABASE_URL:latest,SAAS_JWT_SECRET=SAAS_JWT_SECRET:latest,CRON_SECRET=CRON_SECRET:latest,RESEND_API_KEY=RESEND_API_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest"
 
   migrate:
     runs-on: ubuntu-latest
@@ -209,4 +209,5 @@ jobs:
         DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
         SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
         BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
+        STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
       run: npx tsx scripts/webhook-sanity-check.ts
