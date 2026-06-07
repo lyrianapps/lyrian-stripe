@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { AppPlan } from "@/lib/utils/types";
+import { filterPlansByStrategy } from "@/lib/billing/strategies";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -97,25 +98,19 @@ function resolveIsTest(
 }
 
 /**
- * Once subscribed, only plans matching their billing type are shown.
- * For free-trial users, filter by the provided billingType hint (passed from
- * the session's registered billing mode). Falls back to all plans if unknown.
+ * Resolve which billing type should be used for plan filtering.
+ * Subscribed users: derived from their active plan.
+ * Free-trial users: the hint passed in from their session's registered billing mode.
  */
-function filterPlansByBillingType(
+function resolveBillingType(
   plans: Awaited<ReturnType<typeof loadAppPlans>>,
   currentPlanKey: string,
   billingTypeHint?: string,
-): AppPlan[] {
-  const currentBillingType =
-    currentPlanKey !== "free_trial"
-      ? plans.find((p) => p.planKey === currentPlanKey)?.billingType
-      : billingTypeHint;
-
-  return (
-    currentBillingType
-      ? plans.filter((p) => p.billingType === currentBillingType)
-      : plans
-  ) as AppPlan[];
+): string | undefined {
+  if (currentPlanKey !== "free_trial") {
+    return plans.find((p) => p.planKey === currentPlanKey)?.billingType;
+  }
+  return billingTypeHint;
 }
 
 // ─── Public entry point ───────────────────────────────────────────────────────
@@ -139,10 +134,9 @@ export async function loadSubscriptionPageData(
 
   return {
     subscription,
-    filteredPlans: filterPlansByBillingType(
-      appPlans,
-      currentPlanKey,
-      billingType,
+    filteredPlans: filterPlansByStrategy(
+      appPlans as AppPlan[],
+      resolveBillingType(appPlans, currentPlanKey, billingType),
     ),
     hasFailedPayments,
     duplicateCardDetected,

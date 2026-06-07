@@ -12,55 +12,25 @@ import {
   formatExpirationDate,
 } from "@/lib/utils/planStatus";
 import { SubscriptionPlansProps } from "@/lib/utils/types";
+import { getBillingStrategy } from "@/lib/billing/strategies";
 
 import { useState } from "react";
 
-/**
- * Format price from cents to display string
- */
-function formatPrice(
-  cents: number,
-  currency: string,
-  interval: string,
-  billingType: string,
-  unitAmount: number | null,
-): string {
-  const symbol =
-    currency.toUpperCase() === "USD" ? "$" : currency.toUpperCase();
-  if (billingType === "metered" && unitAmount != null) {
-    const unit = (unitAmount / 100).toFixed(unitAmount % 100 === 0 ? 0 : 2);
-    return `${symbol}${unit}/unit`;
-  }
-  const amount = (cents / 100).toFixed(cents % 100 === 0 ? 0 : 2);
-  return `${symbol}${amount}/${interval}`;
-}
-
 // ─── Billing Type Banner ──────────────────────────────────────────────────────
 
-function BillingTypeBanner({ isMetered }: { isMetered: boolean }) {
-  if (isMetered) {
-    return (
-      <div className="mt-6 rounded-lg border px-4 py-3 text-sm flex items-center gap-2.5 bg-gray-50 border-gray-200 text-gray-600">
-        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-        <span>
-          <span className="font-semibold text-gray-800">
-            Usage-based billing
-          </span>
-          {" — "}you&apos;re charged per unit at the end of each billing period.
-          No fixed monthly fee.
-        </span>
-      </div>
-    );
-  }
-
+function BillingTypeBanner({ billingType }: { billingType: string }) {
+  const strategy = getBillingStrategy(billingType);
   return (
     <div className="mt-6 rounded-lg border px-4 py-3 text-sm flex items-center gap-2.5 bg-gray-50 border-gray-200 text-gray-600">
-      <span className="inline-block w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+      <span
+        className={`inline-block w-2 h-2 rounded-full shrink-0 ${strategy.banner.indicatorClass}`}
+      />
       <span>
         <span className="font-semibold text-gray-800">
-          Subscription billing
+          {strategy.banner.label}
         </span>
-        {" — "}a fixed amount is charged at the start of each billing period.
+        {" — "}
+        {strategy.banner.description}
       </span>
     </div>
   );
@@ -100,11 +70,10 @@ function PlanList({
           key={plan.stripePriceId}
           name={plan.name}
           description={plan.description || ""}
-          price={formatPrice(
+          price={getBillingStrategy(plan.billingType).formatPrice(
             plan.price,
             plan.currency,
             plan.interval,
-            plan.billingType,
             plan.unitAmount,
           )}
           billingType={plan.billingType}
@@ -279,13 +248,14 @@ export default function SubscriptionPlans({
     }
   };
 
-  const isMetered = plans.some((p) => p.billingType === "metered");
-
+  const firstPlanBillingType = plans[0]?.billingType ?? "flat_rate";
   const showCancelSection = !checkoutSuccess;
 
   return (
     <>
-      {plans.length > 0 && <BillingTypeBanner isMetered={isMetered} />}
+      {plans.length > 0 && (
+        <BillingTypeBanner billingType={firstPlanBillingType} />
+      )}
 
       <div className="space-y-6 mt-8">
         {checkoutSuccess && (

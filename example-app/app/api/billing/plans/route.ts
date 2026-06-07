@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { getSession } from "@/lib/auth";
+import { getBillingStrategy } from "@/lib/billingStrategies";
 
 const log = logger.child({ route: "GET /api/billing/plans" });
 
@@ -41,24 +42,18 @@ export async function GET() {
       }[];
     };
 
-    // Shape the response to match what SettingsPage expects,
-    // filtering to only the plans that match the user's billing type.
+    // Filter to plans matching the user's billing mode, then shape for the UI.
+    const strategy = getBillingStrategy(billingType);
     const plans = data.plans
-      .filter((p) =>
-        billingType === "metered"
-          ? p.billingType === "metered" || p.billingType === "volume"
-          : p.billingType === "flat_rate",
-      )
+      .filter((p) => strategy.planTypes.includes(p.billingType))
       .map((p) => ({
         key: p.planKey,
         name: p.name,
         description: p.description ?? "",
-        price:
-          p.billingType === "metered" || p.billingType === "volume"
-            ? "Usage-based"
-            : p.price === 0
-              ? "Free"
-              : `$${(p.price / 100).toFixed(2)} / mo`,
+        price: getBillingStrategy(p.billingType).formatPrice(
+          p.price,
+          p.billingType,
+        ),
         billingType: p.billingType,
         cap: p.freeUnitsPerMonth,
         priceId: p.stripePriceId,
