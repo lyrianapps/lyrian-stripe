@@ -76,7 +76,7 @@ describe("GET /api/subscription/status - edge cases", () => {
 
     await createTestSubscription(testCustomer.id, {
       plan: "basic",
-      status: "active",
+      status: "past_due",
       currentPeriodEnd: pastEnd,
     });
 
@@ -104,7 +104,7 @@ describe("GET /api/subscription/status - edge cases", () => {
 
     await createTestSubscription(testCustomer.id, {
       plan: "pro",
-      status: "active",
+      status: "past_due",
       currentPeriodEnd: pastEnd,
     });
 
