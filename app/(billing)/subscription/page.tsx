@@ -47,7 +47,11 @@ export default async function SubscriptionPage({
     hasFailedPayments,
     duplicateCardDetected,
     isTest,
-  } = await loadSubscriptionPageData(session.appId, session.billingCustomerId);
+  } = await loadSubscriptionPageData(
+    session.appId,
+    session.billingCustomerId,
+    billingType,
+  );
 
   // ── Derived UI state ──────────────────────────────────────────────────────
   const noticeBanners = resolveNoticeBanners({

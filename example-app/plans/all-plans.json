@@ -1,0 +1,34 @@
+[
+  {
+    "planKey": "basic",
+    "name": "Basic",
+    "description": "For individuals and small teams",
+    "price": 1000,
+    "billingType": "flat_rate",
+    "stripeProductId": "prod_TtGBIFRqp6ME5N",
+    "stripePriceId": "price_1SvTfXERKK3AcPrByHGOI37F",
+    "sortOrder": 1
+  },
+  {
+    "planKey": "pro",
+    "name": "Pro",
+    "description": "For businesses and power users",
+    "price": 3000,
+    "billingType": "flat_rate",
+    "stripeProductId": "prod_UetimS3LZrbcHE",
+    "stripePriceId": "price_1TfZvTERKK3AcPrBdm5Jxc36",
+    "sortOrder": 2
+  },
+  {
+    "planKey": "paygo",
+    "name": "Pay As You Go",
+    "description": "No monthly cap — pay $0.04 per todo created",
+    "price": 0,
+    "billingType": "metered",
+    "unitAmount": 4,
+    "stripeMeterEventName": "todo_created",
+    "stripeProductId": "prod_UetixnAAiGXeEX",
+    "stripePriceId": "price_1TfZv0ERKK3AcPrBX4dbXcVI",
+    "sortOrder": 0
+  }
+]

@@ -97,18 +97,19 @@ function resolveIsTest(
 }
 
 /**
- * Free-trial users can see all plan tiers so they can pick a billing model.
- * Once subscribed, only plans matching their billing type are shown (metered
- * users see metered plans; flat-rate users see flat-rate tiers).
+ * Once subscribed, only plans matching their billing type are shown.
+ * For free-trial users, filter by the provided billingType hint (passed from
+ * the session's registered billing mode). Falls back to all plans if unknown.
  */
 function filterPlansByBillingType(
   plans: Awaited<ReturnType<typeof loadAppPlans>>,
   currentPlanKey: string,
+  billingTypeHint?: string,
 ): AppPlan[] {
   const currentBillingType =
     currentPlanKey !== "free_trial"
       ? plans.find((p) => p.planKey === currentPlanKey)?.billingType
-      : undefined;
+      : billingTypeHint;
 
   return (
     currentBillingType
@@ -122,6 +123,7 @@ function filterPlansByBillingType(
 export async function loadSubscriptionPageData(
   appId: string,
   billingCustomerId: string,
+  billingType?: string,
 ): Promise<SubscriptionPageData> {
   const [appPlans, subscription] = await Promise.all([
     loadAppPlans(appId),
@@ -137,7 +139,11 @@ export async function loadSubscriptionPageData(
 
   return {
     subscription,
-    filteredPlans: filterPlansByBillingType(appPlans, currentPlanKey),
+    filteredPlans: filterPlansByBillingType(
+      appPlans,
+      currentPlanKey,
+      billingType,
+    ),
     hasFailedPayments,
     duplicateCardDetected,
     isTest: resolveIsTest(appId, subscription),
