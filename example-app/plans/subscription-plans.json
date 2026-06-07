@@ -1,0 +1,22 @@
+[
+  {
+    "planKey": "basic",
+    "name": "Basic",
+    "description": "For individuals and small teams",
+    "price": 1000,
+    "billingType": "flat_rate",
+    "stripeProductId": "prod_Uer1mgFO9eWJTz",
+    "stripePriceId": "price_1TfXJJCnwj4DiHeGXEJCxr4F",
+    "sortOrder": 1
+  },
+  {
+    "planKey": "pro",
+    "name": "Pro",
+    "description": "For businesses and power users",
+    "price": 3000,
+    "billingType": "flat_rate",
+    "stripeProductId": "prod_Uer1yIFSCYnzV4",
+    "stripePriceId": "price_1TfXJTCnwj4DiHeGCjv2eiEu",
+    "sortOrder": 2
+  }
+]
