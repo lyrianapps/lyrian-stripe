@@ -1,5 +1,7 @@
 "use client";
 
+import moment from "moment";
+
 import { Paragraph } from "@/app/components/Paragraph";
 import { Button } from "@/app/components/Button";
 import { PlanCard } from "@/app/components/PlanCard";
@@ -150,13 +152,17 @@ function CancelSection({
     currentPeriodStart,
     currentPeriodEnd,
   );
+  // Don't display when start === end — indicates a stale record not yet updated by the cron
+  const isBillingPeriodValid =
+    billingPeriod !== null &&
+    !moment(currentPeriodStart).isSame(moment(currentPeriodEnd), "day");
 
   return (
     <div className="mt-10 border-t pt-6">
       <Paragraph className="mb-1">
         <span className="font-semibold">Current Plan:</span> {planLabel}
       </Paragraph>
-      {billingPeriod && (
+      {isBillingPeriodValid && (
         <Paragraph className="mb-2 text-sm text-gray-500">
           Billing period: {billingPeriod}
         </Paragraph>

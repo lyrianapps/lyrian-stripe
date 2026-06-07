@@ -1,24 +1,22 @@
 [
   {
-    "planKey": "free_trial",
-    "name": "Free Trial",
-    "description": "Try it free — up to 10 todos per month",
-    "price": 0,
-    "billingType": "flat_rate",
-    "freeUnitsPerMonth": 10,
-    "sortOrder": 0,
-    "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_FREE_PRICE_ID"
-  },
-  {
     "planKey": "basic",
     "name": "Basic",
-    "description": "Up to 100 todos per month",
+    "description": "For individuals and small teams",
     "price": 1000,
     "billingType": "flat_rate",
-    "freeUnitsPerMonth": 100,
-    "sortOrder": 1,
-    "stripeProductId": "prod_YOUR_BASIC_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_BASIC_PRICE_ID"
+    "stripeProductId": "prod_Uer1mgFO9eWJTz",
+    "stripePriceId": "price_1TfXJJCnwj4DiHeGXEJCxr4F",
+    "sortOrder": 1
+  },
+  {
+    "planKey": "pro",
+    "name": "Pro",
+    "description": "For businesses and power users",
+    "price": 3000,
+    "billingType": "flat_rate",
+    "stripeProductId": "prod_Uer1yIFSCYnzV4",
+    "stripePriceId": "price_1TfXJTCnwj4DiHeGCjv2eiEu",
+    "sortOrder": 2
   }
 ]
