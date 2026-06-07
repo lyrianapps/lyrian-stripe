@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { getSession } from "@/lib/auth";
 
 const log = logger.child({ route: "GET /api/billing/plans" });
 
@@ -12,6 +13,9 @@ const log = logger.child({ route: "GET /api/billing/plans" });
  * the billing service — no need to duplicate it here as env vars.
  */
 export async function GET() {
+  const session = await getSession();
+  const billingType = session?.billingType ?? "flat_rate";
+
   try {
     const res = await fetch(
       `${env.BILLING_API_URL}/api/apps/${env.BILLING_APP_ID}/plans`,
@@ -37,21 +41,28 @@ export async function GET() {
       }[];
     };
 
-    // Shape the response to match what SettingsPage expects
-    const plans = data.plans.map((p) => ({
-      key: p.planKey,
-      name: p.name,
-      description: p.description ?? "",
-      price:
-        p.billingType === "metered" || p.billingType === "volume"
-          ? "Usage-based"
-          : p.price === 0
-            ? "Free"
-            : `$${(p.price / 100).toFixed(2)} / mo`,
-      billingType: p.billingType,
-      cap: p.freeUnitsPerMonth,
-      priceId: p.stripePriceId,
-    }));
+    // Shape the response to match what SettingsPage expects,
+    // filtering to only the plans that match the user's billing type.
+    const plans = data.plans
+      .filter((p) =>
+        billingType === "metered"
+          ? p.billingType === "metered" || p.billingType === "volume"
+          : p.billingType === "flat_rate",
+      )
+      .map((p) => ({
+        key: p.planKey,
+        name: p.name,
+        description: p.description ?? "",
+        price:
+          p.billingType === "metered" || p.billingType === "volume"
+            ? "Usage-based"
+            : p.price === 0
+              ? "Free"
+              : `$${(p.price / 100).toFixed(2)} / mo`,
+        billingType: p.billingType,
+        cap: p.freeUnitsPerMonth,
+        priceId: p.stripePriceId,
+      }));
 
     log.debug({ count: plans.length }, "Plans fetched");
     return NextResponse.json({ plans });
