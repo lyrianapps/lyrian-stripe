@@ -86,11 +86,11 @@ test.describe("Subscription Upgrade Flow", () => {
     // ── Step 6: Navigate back and verify upgraded plan ────────────────────
     await authenticatedPage.goto("/subscription");
 
-    // Basic plan card should now show "Current Plan" (disabled button)
-    const currentPlanButton = authenticatedPage.getByRole("button", {
-      name: "Current Plan",
+    // Basic plan card should now show "Current plan" badge
+    const currentPlanBadge = authenticatedPage.getByText("Current plan", {
+      exact: true,
     });
-    await expect(currentPlanButton).toBeVisible();
+    await expect(currentPlanBadge).toBeVisible();
 
     // Cancel button should now be enabled (active paid subscription)
     await expect(
@@ -123,12 +123,11 @@ test.describe("Subscription Upgrade Flow", () => {
 
     await authenticatedPage.goto("/subscription");
 
-    // Basic plan card renders "Current Plan"
-    const currentPlanButton = authenticatedPage.getByRole("button", {
-      name: "Current Plan",
+    // Basic plan card renders "Current plan" badge
+    const currentPlanBadge = authenticatedPage.getByText("Current plan", {
+      exact: true,
     });
-    await expect(currentPlanButton).toBeVisible();
-    await expect(currentPlanButton).toBeDisabled();
+    await expect(currentPlanBadge).toBeVisible();
 
     // Cancel subscription is available for active paid plan
     await expect(

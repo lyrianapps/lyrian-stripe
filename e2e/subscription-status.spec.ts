@@ -36,11 +36,11 @@ test.describe("Subscription Status Display", () => {
     // Should show Basic as current plan (use specific selector to avoid matching button)
     await expect(authenticatedPage.getByText("Current Plan:")).toBeVisible();
 
-    // Basic plan card should show "Current Plan" button (indicating it's the active plan)
-    const currentPlanButton = authenticatedPage.getByRole("button", {
-      name: "Current Plan",
+    // Basic plan card should show "Current plan" badge (indicating it's the active plan)
+    const currentPlanBadge = authenticatedPage.getByText("Current plan", {
+      exact: true,
     });
-    await expect(currentPlanButton).toBeVisible();
+    await expect(currentPlanBadge).toBeVisible();
 
     // Cancel button should be enabled
     const cancelButton = authenticatedPage.locator(
