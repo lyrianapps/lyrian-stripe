@@ -137,9 +137,9 @@ const checkoutHandler = withApiKey(async (req: NextRequest) => {
     ? `${successBase}?session_id={CHECKOUT_SESSION_ID}&returnUrl=${encodeURIComponent(validatedReturnUrl)}&appId=${encodeURIComponent(appId)}`
     : `${successBase}?session_id={CHECKOUT_SESSION_ID}`;
 
-  const cancelUrl = validatedReturnUrl
-    ? `${cancelBase}?returnUrl=${encodeURIComponent(validatedReturnUrl)}&appId=${encodeURIComponent(appId)}`
-    : cancelBase;
+  // Cancel: if there's a returnUrl, send the user straight back to the app.
+  // Otherwise fall back to the billing portal subscription page.
+  const cancelUrl = validatedReturnUrl ?? cancelBase;
 
   const appStripeKey = await getAppStripeKey(appId);
   const stripeClient = getStripeForApp(appStripeKey);

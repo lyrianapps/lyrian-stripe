@@ -79,37 +79,15 @@ function resolvePaymentStatus(
 }
 
 /**
- * If the user arrived directly from Stripe (no prior portal-redirect visit),
- * they have no billing_session cookie — or have an expired one. Reconstruct
- * a fresh session from the Stripe session metadata so /subscription can render
- * without redirecting to /unauthorized.
+ * After checkout, always reconstruct the billing_session from the Stripe session
+ * metadata — even if a valid cookie already exists. This prevents a stale session
+ * from a previous user/account from showing the wrong subscription on redirect.
  */
 export async function ensureBillingSession(
   sessionId: string,
   appId: string | undefined,
 ): Promise<{ billingType?: string } | void> {
   const cookieStore = await cookies();
-  const existingToken = cookieStore.get("billing_session")?.value;
-
-  // If a cookie exists, verify it's still valid in the DB before trusting it.
-  if (existingToken) {
-    const { getSession } = await import("@/lib/session");
-    const valid = await getSession(existingToken).catch(() => null);
-    if (valid) {
-      // Still read billingType from Stripe metadata even for an existing session
-      // so the caller can pass it along to the redirect URL.
-      try {
-        const stripeKey = await getAppStripeKey(appId);
-        const s =
-          await getStripeForApp(stripeKey).checkout.sessions.retrieve(
-            sessionId,
-          );
-        return { billingType: s.metadata?.billingType ?? undefined };
-      } catch {
-        return;
-      }
-    }
-  }
 
   try {
     const stripeKey = await getAppStripeKey(appId);
