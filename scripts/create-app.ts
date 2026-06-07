@@ -241,6 +241,18 @@ async function main() {
     });
 
     if (plans.length > 0) {
+      // Deactivate any plans not in the new file (update mode only)
+      if (isUpdate) {
+        const incomingPlanKeys = plans.map((p) => p.planKey);
+        await tx.appPlan.updateMany({
+          where: {
+            appId,
+            planKey: { notIn: incomingPlanKeys },
+          },
+          data: { isActive: false },
+        });
+      }
+
       for (const [index, plan] of plans.entries()) {
         await tx.appPlan.upsert({
           where: { appId_planKey: { appId, planKey: plan.planKey } },

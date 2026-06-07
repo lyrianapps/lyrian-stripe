@@ -99,7 +99,7 @@ export function SettingsPage() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [plans, setPlans] = useState<PlanOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [upgrading, setUpgrading] = useState(false);
+  const [upgradingPriceId, setUpgradingPriceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activating, setActivating] = useState(false);
 
@@ -167,7 +167,7 @@ export function SettingsPage() {
   }, []);
 
   async function handleUpgrade(priceId: string) {
-    setUpgrading(true);
+    setUpgradingPriceId(priceId);
     setError(null);
     try {
       const res = await fetch("/api/billing/checkout", {
@@ -178,14 +178,14 @@ export function SettingsPage() {
       const data = (await res.json()) as { url?: string; error?: string };
       if (!res.ok || !data.url) {
         setError(data.error ?? "Failed to start checkout. Please try again.");
-        setUpgrading(false);
+        setUpgradingPriceId(null);
         return;
       }
       sessionStorage.setItem(CHECKOUT_PENDING_KEY, "1");
       window.location.href = data.url;
     } catch {
       setError("Something went wrong. Please try again.");
-      setUpgrading(false);
+      setUpgradingPriceId(null);
     }
   }
 
@@ -193,34 +193,6 @@ export function SettingsPage() {
     return (
       <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
         Loading…
-      </div>
-    );
-  }
-
-  if (activating) {
-    return (
-      <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-500 text-sm">
-        <svg
-          className="animate-spin h-6 w-6 text-blue-500"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-          />
-        </svg>
-        <span>Activating your subscription…</span>
       </div>
     );
   }
@@ -246,6 +218,32 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6">
+      {activating && (
+        <div className="flex items-center gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+          <svg
+            className="animate-spin h-4 w-4 shrink-0"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+            />
+          </svg>
+          <span>Confirming your subscription… this may take a moment.</span>
+        </div>
+      )}
+
       {/* ── Current plan card ────────────────────────────────────────────────────────── */}
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <h2 className="text-base font-semibold text-gray-900 mb-4">
@@ -346,7 +344,7 @@ export function SettingsPage() {
                 plan={plan}
                 isCurrent={plan.key === currentPlan}
                 onUpgrade={handleUpgrade}
-                upgrading={upgrading}
+                upgrading={upgradingPriceId === plan.priceId}
               />
             ))}
           </div>
