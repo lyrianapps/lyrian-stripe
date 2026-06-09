@@ -118,20 +118,6 @@ Plans can be updated at any time by re-running `register-app.yml` with a new pla
 | `STRIPE_WEBHOOK_SECRET` | Optional | Global fallback webhook secret                        |
 | `RESEND_API_KEY`        | Optional | Global fallback email key                             |
 
-## Credential encryption
-
-Stripe keys (`stripeSecretKey`, `stripeWebhookSecret`, `stripePublishableKey`) are encrypted with AES-256-GCM before being written to the database. The format is `enc:v1:<iv>:<tag>:<ciphertext>`. Plain-text values are accepted as a backward-compat fallback.
-
-To encrypt any existing plain-text credentials in the DB, run the `encrypt-keys.yml` workflow (manual trigger, with a dry-run option) or locally:
-
-```bash
-FIELD_ENCRYPTION_KEY=<64-hex> npx tsx scripts/encrypt-existing-keys.ts
-# Dry run first:
-FIELD_ENCRYPTION_KEY=<64-hex> DRY_RUN=true npx tsx scripts/encrypt-existing-keys.ts
-```
-
-Generate a key: `openssl rand -hex 32`
-
 ## Development
 
 ```bash
