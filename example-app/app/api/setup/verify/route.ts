@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 
-const log = logger.child({ route: "GET /api/setup/verify" });
+const log = logger.child({
+  route: "GET /api/setup/verify",
+  service: "example-app",
+});
 
 /**
  * GET /api/setup/verify

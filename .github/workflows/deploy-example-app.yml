@@ -55,7 +55,7 @@ jobs:
           --cpu=1 \
           --timeout=30 \
           --port=3001 \
-          --set-env-vars "NODE_ENV=production" \
+          --set-env-vars "NODE_ENV=production,ENABLE_E2E_SHORTCUTS=true" \
           --set-secrets "BILLING_API_URL=EXAMPLE_APP_BILLING_API_URL:latest,BILLING_API_KEY=EXAMPLE_APP_BILLING_API_KEY:latest,BILLING_APP_ID=EXAMPLE_APP_BILLING_APP_ID:latest,SAAS_JWT_SECRET=SAAS_JWT_SECRET:latest,APP_URL=EXAMPLE_APP_PUBLIC_URL:latest"
 
     - name: Show service URL

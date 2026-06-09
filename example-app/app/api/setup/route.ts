@@ -9,6 +9,7 @@ const SetupSchema = z.object({
   stripeSecretKey: z.string().startsWith("sk_"),
   stripePublishableKey: z.string().startsWith("pk_"),
   stripeWebhookSecret: z.string().startsWith("whsec_"),
+  billingMode: z.enum(["flat_rate", "metered"]),
   plansJson: z.string().min(2),
 });
 
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
     stripeSecretKey,
     stripePublishableKey,
     stripeWebhookSecret,
+    billingMode,
     plansJson,
   } = parsed.data;
 
@@ -79,6 +81,7 @@ export async function POST(req: NextRequest) {
         stripeSecretKey,
         stripePublishableKey,
         stripeWebhookSecret,
+        billingMode,
         plans,
       }),
     });

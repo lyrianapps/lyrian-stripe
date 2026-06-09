@@ -66,6 +66,16 @@ model App {
   // Created lazily on first portal visit, then reused.
   stripePortalConfigId String? // bpc_...
 
+  // Set to true once the app's Stripe credentials and plans have been
+  // successfully verified via GET /api/apps/[appId]/verify.
+  // Used by integrating apps to gate user access until setup is complete.
+  isConfigured Boolean @default(false)
+
+  // Declares whether this app uses flat-rate subscriptions or metered (pay-as-you-go) billing.
+  // All plans configured for this app must have a matching billingType.
+  // null = not yet declared (legacy apps or not yet configured).
+  billingMode BillingType?
+
   customers BillingCustomer[]
   plans     AppPlan[]
 }

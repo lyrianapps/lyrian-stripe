@@ -10,7 +10,7 @@ function getWebhookUrl(): string {
   return `${window.location.origin.replace("example-app", "lyrian-stripe")}/api/billing/webhook/example_app`;
 }
 
-const EXAMPLE_PLANS = JSON.stringify(
+const FLAT_RATE_PLANS = JSON.stringify(
   [
     {
       planKey: "basic",
@@ -36,6 +36,27 @@ const EXAMPLE_PLANS = JSON.stringify(
   null,
   2,
 );
+
+const METERED_PLANS = JSON.stringify(
+  [
+    {
+      planKey: "paygo",
+      name: "Pay As You Go",
+      description: "Billed per unit at the end of each billing period",
+      price: 0,
+      billingType: "metered",
+      unitAmount: 4,
+      stripeProductId: "prod_REPLACE_ME",
+      stripePriceId: "price_REPLACE_ME",
+      stripeMeterEventName: "REPLACE_WITH_YOUR_METER_EVENT",
+      sortOrder: 1,
+    },
+  ],
+  null,
+  2,
+);
+
+type BillingMode = "flat_rate" | "metered";
 
 type Status = "idle" | "loading" | "success" | "error";
 type VerifyStatus = "pending" | "checking" | "done" | "failed";
@@ -225,12 +246,19 @@ export default function SetupPage() {
   const [stripeSecretKey, setStripeSecretKey] = useState("");
   const [stripePublishableKey, setStripePublishableKey] = useState("");
   const [stripeWebhookSecret, setStripeWebhookSecret] = useState("");
-  const [plansJson, setPlansJson] = useState(EXAMPLE_PLANS);
+  const [billingMode, setBillingMode] = useState<BillingMode>("flat_rate");
+  const [plansJson, setPlansJson] = useState(FLAT_RATE_PLANS);
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>("pending");
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
+
+  function handleBillingModeChange(mode: BillingMode) {
+    setBillingMode(mode);
+    setPlansJson(mode === "metered" ? METERED_PLANS : FLAT_RATE_PLANS);
+    setJsonError(null);
+  }
 
   function validateJson(val: string) {
     try {
@@ -270,6 +298,7 @@ export default function SetupPage() {
           stripeSecretKey,
           stripePublishableKey,
           stripeWebhookSecret,
+          billingMode,
           plansJson,
         }),
       });
@@ -335,6 +364,8 @@ export default function SetupPage() {
                 setStatus("idle");
                 setVerifyStatus("pending");
                 setVerifyResult(null);
+                setBillingMode("flat_rate");
+                setPlansJson(FLAT_RATE_PLANS);
               }}
               className="text-sm text-green-700 underline"
             >
@@ -452,6 +483,51 @@ export default function SetupPage() {
         <>
           <SetupGuide />
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Billing mode selector */}
+            <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-3">
+              <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+                Billing model
+              </h2>
+              <p className="text-xs text-gray-500">
+                Choose how customers will be charged. This locks the plan types
+                you can configure — you cannot mix flat rate and metered plans.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {(
+                  [
+                    {
+                      value: "flat_rate" as const,
+                      label: "Flat rate",
+                      desc: "Fixed monthly subscription (basic / pro)",
+                    },
+                    {
+                      value: "metered" as const,
+                      label: "Pay as you go",
+                      desc: "Billed per unit at period end (paygo)",
+                    },
+                  ] as const
+                ).map(({ value, label, desc }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => handleBillingModeChange(value)}
+                    className={`rounded-lg border-2 px-4 py-3 text-left transition-colors ${
+                      billingMode === value
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
+                  >
+                    <p
+                      className={`text-sm font-semibold ${billingMode === value ? "text-blue-800" : "text-gray-800"}`}
+                    >
+                      {label}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+
             {/* Stripe credentials */}
             <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">

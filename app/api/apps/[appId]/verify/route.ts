@@ -3,6 +3,9 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { withApiKey } from "@/lib/auth/apiKey";
 import { decryptField } from "@/lib/crypto";
+import { logger } from "@/app/middleware/logger";
+
+const log = logger.child({ route: "GET /api/apps/[appId]/verify" });
 
 export interface VerifyCheck {
   ok: boolean;
@@ -79,6 +82,7 @@ export const GET = withApiKey(
     }
 
     // Stripe secret key — verify by making a real API call
+    log.info({ appId }, "Verifying Stripe credentials");
     if (secretKey?.startsWith("sk_")) {
       try {
         const stripe = new Stripe(secretKey, {
@@ -98,6 +102,26 @@ export const GET = withApiKey(
     }
 
     const allOk = Object.values(checks).every((c) => c.ok);
+
+    log.info(
+      {
+        appId,
+        ok: allOk,
+        checks: Object.fromEntries(
+          Object.entries(checks).map(([k, v]) => [k, { ok: v.ok }]),
+        ),
+      },
+      allOk ? "Verification passed" : "Verification failed",
+    );
+
+    // Persist the configured state so integrating apps can gate user access
+    if (allOk) {
+      await prisma.app.update({
+        where: { id: appId },
+        data: { isConfigured: true },
+      });
+    }
+
     return NextResponse.json({ ok: allOk, checks } satisfies VerifyResult);
   },
 );
