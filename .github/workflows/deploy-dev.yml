@@ -117,7 +117,7 @@ jobs:
           --min-instances=1 \
           --add-cloudsql-instances ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
           --set-env-vars "NODE_ENV=production,BILLING_APP_URL=${{ secrets.BILLING_APP_URL }},ENABLE_E2E_SHORTCUTS=true" \
-          --set-secrets "DATABASE_URL=DATABASE_URL:latest,SAAS_JWT_SECRET=SAAS_JWT_SECRET:latest,CRON_SECRET=CRON_SECRET:latest,RESEND_API_KEY=RESEND_API_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest"
+          --set-secrets "DATABASE_URL=DATABASE_URL:latest,SAAS_JWT_SECRET=SAAS_JWT_SECRET:latest,CRON_SECRET=CRON_SECRET:latest,RESEND_API_KEY=RESEND_API_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,FIELD_ENCRYPTION_KEY=FIELD_ENCRYPTION_KEY:latest"
 
   migrate:
     runs-on: ubuntu-latest
