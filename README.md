@@ -106,6 +106,109 @@ Plans can be updated at any time by re-running `register-app.yml` with a new pla
 | `/api/billing/webhook/:appId` | POST   | Stripe signature | Webhook receiver                  |
 | `/api/apps/:appId/plans`      | GET    | —                | Public plan listing for an app    |
 
+### Check subscription status
+
+Call this from your SaaS backend to gate features based on a user's active plan.
+
+```typescript
+// lib/billing.ts (in your SaaS app)
+
+const DEFAULT_SUBSCRIPTION = { plan: "free_trial", status: "active" };
+
+export async function getSubscriptionStatus(externalUserId: string) {
+  if (!process.env.BILLING_APP_URL || !process.env.BILLING_APP_ID || !process.env.BILLING_API_KEY) {
+    return DEFAULT_SUBSCRIPTION; // graceful fallback when billing isn't configured
+  }
+
+  const url = new URL(`${process.env.BILLING_APP_URL}/api/subscription/status`);
+  url.searchParams.set("appId", process.env.BILLING_APP_ID);
+  url.searchParams.set("externalUserId", externalUserId);
+
+  const res = await fetch(url.toString(), {
+    headers: { "x-api-key": process.env.BILLING_API_KEY },
+  });
+
+  if (!res.ok) return DEFAULT_SUBSCRIPTION;
+
+  return res.json(); // { plan, status, currentPeriodEnd, cancelAtPeriodEnd, ... }
+}
+```
+
+**Response shape:**
+
+```json
+{
+  "plan": "basic",
+  "status": "active",
+  "currentPeriodEnd": "2026-07-09T00:00:00.000Z",
+  "cancelAtPeriodEnd": false
+}
+```
+
+`status` mirrors Stripe's subscription statuses: `active`, `past_due`, `trialing`, `canceled`, `unpaid`. A missing or expired subscription returns `{ plan: "free_trial", status: "active" }` by convention.
+
+### Initiate checkout
+
+Redirect a user to Stripe Checkout from your backend.
+
+```typescript
+const res = await fetch(`${process.env.BILLING_APP_URL}/api/billing/checkout`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-api-key": process.env.BILLING_API_KEY,
+  },
+  body: JSON.stringify({
+    appId: process.env.BILLING_APP_ID,
+    externalUserId: user.id,
+    priceId: "price_xxx",      // Stripe Price ID for the selected plan
+    email: user.email,
+    returnUrl: "https://yourapp.com/settings", // where to land after checkout
+  }),
+});
+
+const { url } = await res.json();
+redirect(url); // Stripe-hosted checkout page
+```
+
+### Open the billing portal
+
+Generate a short-lived JWT and redirect the user. The billing service verifies it, creates a session, and shows the portal UI (upgrade, cancel, invoices).
+
+```typescript
+import jwt from "jsonwebtoken";
+
+export function getBillingPortalUrl(userId: string) {
+  const token = jwt.sign(
+    { iss: process.env.BILLING_APP_ID, sub: userId },
+    process.env.SAAS_JWT_SECRET!,
+    { expiresIn: "5m" }
+  );
+  return `${process.env.BILLING_APP_URL}/api/billing/portal?token=${token}`;
+}
+```
+
+### Report usage (metered plans)
+
+For pay-as-you-go plans, report a unit of usage after each billable action.
+
+```typescript
+await fetch(`${process.env.BILLING_APP_URL}/api/usage/report`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-api-key": process.env.BILLING_API_KEY,
+  },
+  body: JSON.stringify({
+    appId: process.env.BILLING_APP_ID,
+    externalUserId: user.id,
+    quantity: 1,
+  }),
+});
+// Response: { allowed: true, usage: 42 }
+// If the user hits a free-tier cap: { allowed: false, usage: 500, limit: 500 }
+```
+
 ## Environment variables
 
 | Variable                | Required | Description                                           |
