@@ -49,12 +49,6 @@ export default async function RootLayout({
                   </Link>
                 </nav>
               )}
-              <Link
-                href="/setup"
-                className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
-              >
-                ⚙ Configure
-              </Link>
               {session && (
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <span className="hidden sm:inline">{session.email}</span>

@@ -362,14 +362,11 @@ export function SettingsPage() {
       {!hasSubscription && plans.length === 0 && (
         <section className="rounded-xl border border-amber-200 bg-amber-50 p-5">
           <p className="text-sm font-semibold text-amber-800 mb-1">
-            No plans configured
+            No plans available
           </p>
           <p className="text-sm text-amber-700">
-            Billing hasn&apos;t been set up yet. Visit the{" "}
-            <a href="/setup" className="underline font-medium">
-              Configure page
-            </a>{" "}
-            to connect your Stripe account and add pricing plans.
+            Billing plans haven&apos;t been configured yet. Please check back
+            later.
           </p>
         </section>
       )}
