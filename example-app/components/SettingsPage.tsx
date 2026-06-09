@@ -104,66 +104,74 @@ export function SettingsPage() {
   const [activating, setActivating] = useState(false);
 
   useEffect(() => {
-    const checkoutPending =
-      typeof window !== "undefined" &&
-      sessionStorage.getItem(CHECKOUT_PENDING_KEY) === "1";
+    async function loadBillingData() {
+      const checkoutPending =
+        typeof window !== "undefined" &&
+        sessionStorage.getItem(CHECKOUT_PENDING_KEY) === "1";
 
-    if (checkoutPending) {
-      sessionStorage.removeItem(CHECKOUT_PENDING_KEY);
-    }
+      if (checkoutPending) {
+        sessionStorage.removeItem(CHECKOUT_PENDING_KEY);
+      }
 
-    Promise.all([
-      fetch("/api/billing/status").then((r) => r.json()),
-      fetch("/api/billing/usage").then((r) => r.json()),
-      fetch("/api/billing/plans").then((r) => r.json()),
-    ])
-      .then(
-        ([statusData, usageData, plansData]: [
-          SubscriptionStatus,
-          Usage,
-          { plans: PlanOption[] },
-        ]) => {
-          setStatus(statusData);
-          setUsage(usageData);
-          setPlans(plansData.plans ?? []);
+      try {
+        const [statusData, usageData, plansData] = await Promise.all([
+          fetch("/api/billing/status").then(
+            (r) => r.json() as Promise<SubscriptionStatus>,
+          ),
+          fetch("/api/billing/usage").then((r) => r.json() as Promise<Usage>),
+          fetch("/api/billing/plans").then(
+            (r) => r.json() as Promise<{ plans: PlanOption[] }>,
+          ),
+        ]);
 
-          // If the user just returned from checkout but the webhook hasn't
-          // fired yet, the plan will still be free_trial. Poll until it updates.
-          if (
-            checkoutPending &&
-            (statusData.plan == null || statusData.plan === "free_trial")
-          ) {
-            setActivating(true);
-            const deadline = Date.now() + POLL_TIMEOUT_MS;
-            const interval = setInterval(async () => {
-              if (Date.now() >= deadline) {
+        setStatus(statusData);
+        setUsage(usageData);
+        setPlans(plansData.plans ?? []);
+
+        // If the user just returned from checkout but the webhook hasn't
+        // fired yet, the plan will still be free_trial. Poll until it updates.
+        if (
+          checkoutPending &&
+          (statusData.plan == null || statusData.plan === "free_trial")
+        ) {
+          setActivating(true);
+          const deadline = Date.now() + POLL_TIMEOUT_MS;
+          const interval = setInterval(async () => {
+            if (Date.now() >= deadline) {
+              clearInterval(interval);
+              setActivating(false);
+              return;
+            }
+            try {
+              const res = await fetch("/api/billing/status");
+              const data: SubscriptionStatus = await res.json();
+              if (data.plan && data.plan !== "free_trial") {
                 clearInterval(interval);
                 setActivating(false);
-                return;
+                // Refresh all data now that the subscription is live
+                const [newUsage, newPlans] = await Promise.all([
+                  fetch("/api/billing/usage").then(
+                    (r) => r.json() as Promise<Usage>,
+                  ),
+                  fetch("/api/billing/plans").then(
+                    (r) => r.json() as Promise<{ plans: PlanOption[] }>,
+                  ),
+                ]);
+                setStatus(data);
+                setUsage(newUsage);
+                setPlans(newPlans.plans ?? []);
               }
-              try {
-                const res = await fetch("/api/billing/status");
-                const data: SubscriptionStatus = await res.json();
-                if (data.plan && data.plan !== "free_trial") {
-                  clearInterval(interval);
-                  setActivating(false);
-                  // Refresh all data now that the subscription is live
-                  const [newUsage, newPlans] = await Promise.all([
-                    fetch("/api/billing/usage").then((r) => r.json()),
-                    fetch("/api/billing/plans").then((r) => r.json()),
-                  ]);
-                  setStatus(data);
-                  setUsage(newUsage);
-                  setPlans((newPlans as { plans: PlanOption[] }).plans ?? []);
-                }
-              } catch {
-                // ignore transient fetch errors during polling
-              }
-            }, POLL_INTERVAL_MS);
-          }
-        },
-      )
-      .finally(() => setLoading(false));
+            } catch {
+              // ignore transient fetch errors during polling
+            }
+          }, POLL_INTERVAL_MS);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadBillingData().catch(console.error);
   }, []);
 
   async function handleUpgrade(priceId: string) {
@@ -348,6 +356,21 @@ export function SettingsPage() {
               />
             ))}
           </div>
+        </section>
+      )}
+
+      {!hasSubscription && plans.length === 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-semibold text-amber-800 mb-1">
+            No plans configured
+          </p>
+          <p className="text-sm text-amber-700">
+            Billing hasn&apos;t been set up yet. Visit the{" "}
+            <a href="/setup" className="underline font-medium">
+              Configure page
+            </a>{" "}
+            to connect your Stripe account and add pricing plans.
+          </p>
         </section>
       )}
 
