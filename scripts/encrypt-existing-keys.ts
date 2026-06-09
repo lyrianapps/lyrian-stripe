@@ -15,7 +15,8 @@
  *   openssl rand -hex 32
  */
 
-import { prisma } from "../lib/prisma";
+import { PrismaClient } from "../lib/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { encrypt } from "../lib/crypto";
 
 const DRY_RUN = process.env.DRY_RUN === "true";
@@ -25,6 +26,17 @@ if (!process.env.FIELD_ENCRYPTION_KEY) {
   console.error("❌  FIELD_ENCRYPTION_KEY is not set.");
   process.exit(1);
 }
+
+if (!process.env.DATABASE_URL) {
+  console.error("❌  DATABASE_URL is not set.");
+  process.exit(1);
+}
+
+// Instantiate Prisma directly — avoids importing lib/prisma which pulls in
+// env.ts and demands all app env vars (SAAS_JWT_SECRET etc.) at startup.
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
 
 const FIELDS = [
   "stripeSecretKey",
@@ -107,4 +119,4 @@ run()
     console.error("❌  Migration failed:", err);
     process.exit(1);
   })
-  .finally(() => prisma.$disconnect());
+  .finally(() => void prisma.$disconnect());
