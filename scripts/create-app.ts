@@ -27,6 +27,7 @@ import { prisma } from "../lib/prisma";
 import { generateApiKey } from "../lib/auth/apiKey";
 import { Plan, BillingType } from "../lib/generated/prisma/enums";
 import { z } from "zod";
+import { encrypt } from "../lib/crypto";
 
 // Valid planKey values must match the Plan enum
 const VALID_PLAN_KEYS = Object.values(Plan) as string[];
@@ -172,10 +173,15 @@ async function main() {
   let resendApiKey: string | undefined;
   let fromEmail: string | undefined;
   // Stripe credentials — read from env vars (injected by CI, never committed)
-  const stripeSecretKey = process.env.APP_STRIPE_SECRET_KEY || undefined;
-  const stripePublishableKey = process.env.APP_STRIPE_PK_KEY || undefined;
-  const stripeWebhookSecret =
-    process.env.APP_STRIPE_WEBHOOK_SECRET || undefined;
+  const stripeSecretKey = process.env.APP_STRIPE_SECRET_KEY
+    ? encrypt(process.env.APP_STRIPE_SECRET_KEY)
+    : undefined;
+  const stripePublishableKey = process.env.APP_STRIPE_PK_KEY
+    ? encrypt(process.env.APP_STRIPE_PK_KEY)
+    : undefined;
+  const stripeWebhookSecret = process.env.APP_STRIPE_WEBHOOK_SECRET
+    ? encrypt(process.env.APP_STRIPE_WEBHOOK_SECRET)
+    : undefined;
   try {
     const rawJson = JSON.parse(readFileSync(plansFile, "utf-8"));
     const parsed = AppConfigSchema.safeParse(rawJson);

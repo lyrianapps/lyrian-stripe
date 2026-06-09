@@ -30,6 +30,14 @@ const envSchema = z.object({
 
   // Dev admin token for gating dev-only routes (set in non-production only)
   DEV_ADMIN_TOKEN: z.string().min(8).optional(),
+
+  // Field-level encryption key for sensitive DB values (Stripe keys, etc.)
+  // Must be exactly 64 hex characters (32 bytes / 256 bits).
+  // Generate with: openssl rand -hex 32
+  FIELD_ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64}$/, "Must be 64 hex characters (32 bytes)")
+    .optional(),
 });
 
 function validateEnv() {

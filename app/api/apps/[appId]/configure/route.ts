@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { withApiKey } from "@/lib/auth/apiKey";
 import { Plan, BillingType } from "@/lib/generated/prisma/enums";
+import { encrypt } from "@/lib/crypto";
 
 const VALID_PLAN_KEYS = Object.values(Plan) as string[];
 const VALID_BILLING_TYPES = Object.values(BillingType) as string[];
@@ -93,11 +94,12 @@ export const POST = withApiKey(
     await prisma.$transaction(async (tx) => {
       // Only patch the credential fields that were provided
       const credentialPatch: Record<string, string> = {};
-      if (stripeSecretKey) credentialPatch.stripeSecretKey = stripeSecretKey;
+      if (stripeSecretKey)
+        credentialPatch.stripeSecretKey = encrypt(stripeSecretKey);
       if (stripePublishableKey)
-        credentialPatch.stripePublishableKey = stripePublishableKey;
+        credentialPatch.stripePublishableKey = encrypt(stripePublishableKey);
       if (stripeWebhookSecret)
-        credentialPatch.stripeWebhookSecret = stripeWebhookSecret;
+        credentialPatch.stripeWebhookSecret = encrypt(stripeWebhookSecret);
 
       if (Object.keys(credentialPatch).length > 0) {
         await tx.app.update({ where: { id: appId }, data: credentialPatch });

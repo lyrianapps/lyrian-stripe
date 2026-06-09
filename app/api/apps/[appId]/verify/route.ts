@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { withApiKey } from "@/lib/auth/apiKey";
+import { decryptField } from "@/lib/crypto";
 
 export interface VerifyCheck {
   ok: boolean;
@@ -50,13 +51,20 @@ export const GET = withApiKey(
       plans: { ok: false, count: 0, detail: "No active plans" },
     };
 
-    // Publishable key — just check it's present and looks right
-    if (app.stripePublishableKey?.startsWith("pk_")) {
-      checks.publishableKey = { ok: true, detail: "Set" };
+    const secretKey = decryptField(app.stripeSecretKey);
+    const publishableKey = decryptField(app.stripePublishableKey);
+    const webhookSecret = decryptField(app.stripeWebhookSecret);
+
+    // Publishable key — check presence and surface test vs live mode
+    if (publishableKey?.startsWith("pk_")) {
+      const mode = publishableKey.startsWith("pk_test_")
+        ? "test mode"
+        : "live mode";
+      checks.publishableKey = { ok: true, detail: mode };
     }
 
-    // Webhook secret — check it's present and looks right
-    if (app.stripeWebhookSecret?.startsWith("whsec_")) {
+    // Webhook secret — check presence
+    if (webhookSecret?.startsWith("whsec_")) {
       checks.webhookSecret = { ok: true, detail: "Set" };
     }
 
@@ -71,13 +79,14 @@ export const GET = withApiKey(
     }
 
     // Stripe secret key — verify by making a real API call
-    if (app.stripeSecretKey?.startsWith("sk_")) {
+    if (secretKey?.startsWith("sk_")) {
       try {
-        const stripe = new Stripe(app.stripeSecretKey, {
+        const stripe = new Stripe(secretKey, {
           apiVersion: "2025-12-15.clover",
         });
         const account = await stripe.accounts.retrieve();
-        const label = account.email ?? account.id ?? "Connected";
+        const mode = secretKey.startsWith("sk_test_") ? "test" : "live";
+        const label = `${account.email ?? account.id ?? "Connected"} (${mode} mode)`;
         checks.stripeKey = { ok: true, detail: label };
       } catch (err) {
         const msg =
