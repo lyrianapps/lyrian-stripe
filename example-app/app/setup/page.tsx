@@ -33,6 +33,23 @@ const EXAMPLE_PLANS = JSON.stringify(
 );
 
 type Status = "idle" | "loading" | "success" | "error";
+type VerifyStatus = "pending" | "checking" | "done" | "failed";
+
+interface VerifyCheck {
+  ok: boolean;
+  detail: string;
+  count?: number;
+}
+
+interface VerifyResult {
+  ok: boolean;
+  checks: {
+    stripeKey: VerifyCheck;
+    publishableKey: VerifyCheck;
+    webhookSecret: VerifyCheck;
+    plans: VerifyCheck;
+  };
+}
 
 export default function SetupPage() {
   const [stripeSecretKey, setStripeSecretKey] = useState("");
@@ -42,6 +59,8 @@ export default function SetupPage() {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>("pending");
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
 
   function validateJson(val: string) {
     try {
@@ -49,6 +68,21 @@ export default function SetupPage() {
       setJsonError(null);
     } catch {
       setJsonError("Invalid JSON");
+    }
+  }
+
+  async function runVerification() {
+    setVerifyStatus("checking");
+    setVerifyResult(null);
+    try {
+      const res = await fetch("/api/setup/verify", { cache: "no-store" });
+      const data = (await res.json()) as VerifyResult;
+      setVerifyResult(data);
+      setVerifyStatus("done");
+      log.info({ ok: data.ok }, "Verification completed");
+    } catch (err) {
+      log.error({ err }, "Verification request failed");
+      setVerifyStatus("failed");
     }
   }
 
@@ -94,6 +128,7 @@ export default function SetupPage() {
 
       log.info("App configured successfully via setup page");
       setStatus("success");
+      runVerification();
     } catch (err) {
       log.error({ err }, "Network error during setup");
       setErrorMsg("Network error — could not reach the server");
@@ -113,22 +148,134 @@ export default function SetupPage() {
       </div>
 
       {status === "success" ? (
-        <div className="rounded-xl border border-green-200 bg-green-50 p-6 space-y-3">
-          <p className="font-semibold text-green-800">Configuration saved!</p>
-          <p className="text-sm text-green-700">
-            Your Stripe keys and plans are now active. Register a new account on
-            the{" "}
-            <a href="/login" className="underline">
-              login page
-            </a>{" "}
-            to try the billing flow.
-          </p>
-          <button
-            onClick={() => setStatus("idle")}
-            className="text-sm text-green-700 underline"
-          >
-            Configure again
-          </button>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-green-200 bg-green-50 p-6 space-y-3">
+            <p className="font-semibold text-green-800">Configuration saved!</p>
+            <p className="text-sm text-green-700">
+              Your Stripe keys and plans are now active. Register a new account
+              on the{" "}
+              <a href="/login" className="underline">
+                login page
+              </a>{" "}
+              to try the billing flow.
+            </p>
+            <button
+              onClick={() => {
+                setStatus("idle");
+                setVerifyStatus("pending");
+                setVerifyResult(null);
+              }}
+              className="text-sm text-green-700 underline"
+            >
+              Configure again
+            </button>
+          </div>
+
+          {/* Verification checklist */}
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+                Configuration check
+              </h2>
+              {verifyStatus === "done" && (
+                <button
+                  onClick={runVerification}
+                  className="text-xs text-blue-600 underline"
+                >
+                  Re-run
+                </button>
+              )}
+            </div>
+
+            {verifyStatus === "checking" && (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <svg
+                  className="animate-spin h-4 w-4 shrink-0 text-blue-500"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                  />
+                </svg>
+                Verifying with Stripe…
+              </div>
+            )}
+
+            {verifyStatus === "failed" && (
+              <p className="text-sm text-red-600">
+                Could not reach the billing service.{" "}
+                <button onClick={runVerification} className="underline">
+                  Retry
+                </button>
+              </p>
+            )}
+
+            {verifyStatus === "done" && verifyResult && (
+              <ul className="space-y-2">
+                {(
+                  [
+                    ["stripeKey", "Stripe secret key"],
+                    ["publishableKey", "Stripe publishable key"],
+                    ["webhookSecret", "Webhook signing secret"],
+                    ["plans", "Pricing plans"],
+                  ] as const
+                ).map(([key, label]) => {
+                  const check = verifyResult.checks[key];
+                  return (
+                    <li key={key} className="flex items-start gap-2 text-sm">
+                      <span className="mt-0.5 shrink-0">
+                        {check.ok ? (
+                          <svg
+                            className="h-4 w-4 text-green-500"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2.5}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="h-4 w-4 text-red-500"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2.5}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        )}
+                      </span>
+                      <span className="text-gray-700 font-medium">{label}</span>
+                      <span className="ml-auto text-gray-400 text-xs">
+                        {check.detail}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
