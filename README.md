@@ -1,897 +1,141 @@
-# Lyrian Stripe - Centralized Billing Service
+# Lyrian Stripe
 
-A centralized billing service that handles Stripe subscriptions for multiple SaaS applications.
+> ⚠️ **Not production ready** — actively in development.
 
-> ⚠️ **Disclaimer: Not Production Ready**
->
-> This software is currently in active development and is **not ready for production use**.
+Delegate your entire Stripe billing layer to one service. Register your plans, drop in your Stripe keys — encrypted at rest with AES-256-GCM — and Lyrian handles checkout, webhooks, subscription lifecycle, cron jobs, and the billing portal UI across as many SaaS apps as you need.
 
-## Overview
+> **Roadmap:** a management UI for registering apps, managing plans, and monitoring subscriptions without touching the CLI or CI workflows.
 
-This billing app allows you to:
+## Example app
 
-- Manage subscriptions for multiple SaaS products from one place
-- Handle Stripe webhooks centrally
-- Provide a unified billing portal UI for end users
-- Let SaaS backends check subscription status via API
-- **Each SaaS app configures its own pricing plans** - no hardcoded global prices
-- **Each SaaS app owns its own email sending** - per-app Resend API key and sending domain
-- **Each SaaS app owns its own Stripe account** - per-app Stripe keys stored in the database, not in infrastructure secrets
+The `example-app/` directory contains a full TodoApp demo that integrates with Lyrian. It lets new users pick a billing type at registration (flat-rate subscription or pay-as-you-go), then exercises the full flow — checkout, portal, plan switching, and cancellation.
 
-## Architecture
+[![Example app register screen](docs/todo-app.png)](https://lyrian-example-app-494926016713.us-central1.run.app/login)
 
-```
-┌─────────────────┐      ┌─────────────────────────────────┐      ┌─────────────────┐
-│    SaaS A       │      │      Lyrian Billing App         │      │     Stripe      │
-│   (your app)    │      │    (this repository)            │      │                 │
-└────────┬────────┘      └───────────────┬─────────────────┘      └────────┬────────┘
-         │                               │                                  │
-         │ ───── API Key (backend) ────► │                                  │
-         │                               │                                  │
-         │ ───── JWT Token (portal) ───► │                                  │
-         │                               │ ◄─────── Webhooks ───────────────│
-         │                               │                                  │
-```
+**[Try the live demo →](https://lyrian-example-app-494926016713.us-central1.run.app/login)**
 
-## Authentication
+## What it does
 
-This app supports **two authentication methods** for protected routes:
+- **Multi-app** — one deployment serves multiple SaaS products; each app has isolated Stripe credentials, plans, and email config
+- **Billing models** — flat-rate, free-tier (hard cap), pay-as-you-go (metered), and volume pricing; mix and match per app
+- **Checkout** — creates Stripe Checkout sessions, handles success/decline redirects, detects duplicate cards
+- **Webhooks** — per-app endpoint (`/api/billing/webhook/:appId`); verifies signatures, updates subscription records
+- **Portal UI** — hosted billing portal for end users (upgrade, cancel, invoice history)
+- **Subscription status API** — your SaaS backend polls one endpoint to gate features
+- **Cron jobs** — scheduled downgrade of expired subscriptions; runs on Cloud Scheduler
+- **Encrypted credentials** — Stripe keys are AES-256-GCM encrypted at rest; decrypted only at the point of use
+- **Transactional email** — per-app Resend key for subscription confirmation emails
 
-### 1. API Key (Server-to-Server)
+## Registering an app
 
-Used when your SaaS backend needs to call the billing API directly.
+Everything is driven by a plans JSON file and the `register-app.yml` workflow (or `scripts/create-app.ts` locally).
 
-```bash
-curl -X GET "https://billing.yourdomain.com/api/subscription/status?appId=saas-a&externalUserId=user-123" \
-  -H "x-api-key: sk_live_abc123..."
-```
-
-**When to use:** Checking subscription status, server-side access control
-
-### 2. Session Cookie (Browser Users)
-
-Used automatically when users navigate to the billing portal through your app.
-
-**When to use:** User clicks "Manage Subscription" → redirected to billing portal → cookie is set automatically
-
-### Authentication Flow Diagram
-
-```
-┌─────────────────┐      ┌─────────────────────────────────┐      ┌─────────────────┐
-│    SaaS A       │      │         Billing App             │      │  User Browser   │
-└────────┬────────┘      └───────────────┬─────────────────┘      └────────┬────────┘
-         │                               │                                  │
-         │  1. User clicks               │                                  │
-         │     "Manage Subscription"     │                                  │
-         │                               │                                  │
-         │  2. Generate JWT              │                                  │
-         │     (iss=saas-a, sub=user-123)│                                  │
-         │                               │                                  │
-         │  3. Redirect ────────────────►│                                  │
-         │     /api/billing/portal?token=│                                  │
-         │                               │                                  │
-         │                               │  4. Verify JWT                   │
-         │                               │  5. Create billing_session       │
-         │                               │  6. Set cookie ─────────────────►│
-         │                               │                                  │
-         │                               │  7. Redirect to /subscription    │
-         │                               │     (user sees plans UI)         │
-         │                               │                                  │
-         │                               │◄──── 8. User upgrades (cookie) ──│
-         │                               │                                  │
-         │  9. Poll subscription status  │                                  │
-         │     (with API key)            │                                  │
-         │◄──────────────────────────────│                                  │
-```
-
-## Integration Guide
-
-### Step 1: Register Your SaaS App with Pricing Plans
-
-Create a plans JSON file in the repo root containing your Stripe product/price IDs. **Stripe keys and email credentials are never stored in the file** — they are injected at runtime via the CI workflow or CLI flags.
+**1. Create your plans file**
 
 ```json
-// my-app-plans.json
 [
   {
-    "planKey": "free_trial", // owned by our app not stripe
-    "name": "Free Trial",
-    "description": "Try it free for 14 days",
-    "price": 0,
-    "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_FREE_PRICE_ID"
-  },
-  {
-    "planKey": "basic", // owned by our app not stripe
+    "planKey": "basic",
     "name": "Basic",
-    "description": "For individuals and small teams",
+    "description": "For individuals",
     "price": 1000,
-    "stripeProductId": "prod_YOUR_BASIC_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_BASIC_PRICE_ID"
+    "billingType": "flat_rate",
+    "stripeProductId": "prod_xxx",
+    "stripePriceId": "price_xxx"
   },
   {
-    "planKey": "pro", // owned by our app not stripe
-    "name": "Pro",
-    "description": "For businesses and power users",
-    "price": 3000,
-    "stripeProductId": "prod_YOUR_PRO_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_PRO_PRICE_ID"
+    "planKey": "paygo",
+    "name": "Pay as you go",
+    "description": "$0.04 per unit",
+    "price": 0,
+    "billingType": "metered",
+    "unitAmount": 4,
+    "stripeMeterEventName": "your_event_name",
+    "stripeProductId": "prod_xxx",
+    "stripePriceId": "price_xxx"
   }
 ]
 ```
 
-See `scripts/example-plans.json` for a ready-to-copy template.
+See `scripts/example-plans.json` for a full template with all supported fields.
 
-Then trigger the **`register-app.yml`** GitHub Actions workflow, providing:
+**2. Trigger `register-app.yml`** — provide `plans_file`, `stripe_secret_key`, `stripe_publishable_key`, `stripe_webhook_secret`, and optionally `resend_api_key` / `from_email`. Credentials are masked in logs, AES-256-GCM encrypted before writing to the DB, and the plans file is automatically deleted from the repo after registration.
 
-- `plans_file` — the filename above (e.g. `my-app-plans.json`)
-- `stripe_secret_key` — your app's Stripe `sk_live_...` or `sk_test_...` key (masked in logs, never committed)
-- `stripe_publishable_key` — your app's Stripe `pk_live_...` or `pk_test_...` key
-- `stripe_webhook_secret` — your app's Stripe `whsec_...` webhook signing secret
-- `resend_api_key` — your Resend `re_live_...` key (masked in logs, never committed)
-- `from_email` — e.g. `billing@yourapp.com`
+**3. Register the webhook** in your Stripe dashboard:
 
-The workflow registers the app, injects all credentials into the DB at runtime, then **automatically deletes the plans file from the repo** via a follow-up commit — so no Stripe IDs linger in git history after registration.
-
-To register locally instead:
-
-```bash
-npx tsx scripts/create-app.ts <app-id> "<app-name>" <plans.json>
-
-# Example:
-npx tsx scripts/create-app.ts saas-a "My Todo App" ./my-app-plans.json
+```
+POST https://your-billing-app.com/api/billing/webhook/<app-id>
 ```
 
-**Re-running the script on an existing app** will update only the email credentials. The API key and plans are left untouched.
-
-To add or update plans for an existing app:
-
-```bash
-npx tsx scripts/add-plans.ts <app-id> <plans.json>
-```
-
-Save the API key securely — it won't be shown again.
-
-### Step 2: Set Up Environment Variables in Your SaaS App
-
-```env
-# .env.local
-BILLING_APP_URL=https://billing.yourdomain.com
-BILLING_API_KEY=sk_live_abc123...           # For backend API calls
-SAAS_JWT_SECRET=your-shared-secret          # Same secret as billing app
-```
-
-### Step 3: Create Billing Utilities in Your SaaS App
+**4. Point your SaaS at the portal** — generate a short-lived JWT and redirect users to `/api/billing/portal?token=<jwt>`.
 
 ```typescript
-// lib/billing.ts
 import jwt from "jsonwebtoken";
 
-const BILLING_APP_URL = process.env.BILLING_APP_URL!;
-const BILLING_API_KEY = process.env.BILLING_API_KEY!;
-const JWT_SECRET = process.env.SAAS_JWT_SECRET!;
-
-/**
- * Generate a signed JWT for the billing portal
- */
-export function createBillingToken(userId: string): string {
-  return jwt.sign(
-    {
-      iss: "saas-a",        // Your registered app ID
-      sub: userId,          // User's ID in your SaaS
-    },
-    JWT_SECRET,
-    { expiresIn: "5m" }
-  );
-}
-
-/**
- * Get the URL to redirect users to the billing portal
- */
-export function getBillingPortalUrl(userId: string): string {
-  const token = createBillingToken(userId);
-  return `${BILLING_APP_URL}/api/billing/portal?token=${token}`;
-}
-
-/**
- * Check subscription status (server-side)
- */
-export async function getSubscriptionStatus(userId: string) {
-  const res = await fetch(
-    `${BILLING_APP_URL}/api/subscription/status?appId=saas-a&externalUserId=${userId}`,
-    {
-      headers: { "x-api-key": BILLING_API_KEY },
-    }
-  );
-  return res.json();
+export function getBillingPortalUrl(userId: string) {
+  const token = jwt.sign({ iss: "your-app-id", sub: userId }, process.env.SAAS_JWT_SECRET!, { expiresIn: "5m" });
+  return `${process.env.BILLING_APP_URL}/api/billing/portal?token=${token}`;
 }
 ```
 
-### Step 4: Add "Manage Subscription" Button
-
-```tsx
-// app/settings/billing/page.tsx
-import { redirect } from "next/navigation";
-import { getBillingPortalUrl } from "@/lib/billing";
-import { getCurrentUser } from "@/lib/auth";
-
-export default async function BillingPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-
-  const billingUrl = getBillingPortalUrl(user.id);
-
-  return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold mb-4">Subscription</h1>
-      <a
-        href={billingUrl}
-        className="bg-blue-600 text-white px-4 py-2 rounded"
-      >
-        Manage Subscription →
-      </a>
-    </div>
-  );
-}
-```
-
-### Step 5: Check Subscription Status (Access Control)
-
-```typescript
-// middleware.ts or server action
-import { getSubscriptionStatus } from "@/lib/billing";
-
-export async function checkPremiumAccess(userId: string) {
-  const { plan, status } = await getSubscriptionStatus(userId);
-
-  if (plan === "free_trial" && status === "expired") {
-    return { allowed: false, reason: "Trial expired" };
-  }
-
-  if (plan === "basic" || plan === "pro") {
-    return { allowed: true };
-  }
-
-  return { allowed: false, reason: "Upgrade required" };
-}
-```
-
-## API Reference
-
-### Protected Routes (require auth)
-
-| Endpoint                   | Method | Auth               | Description                    |
-| -------------------------- | ------ | ------------------ | ------------------------------ |
-| `/api/subscription/status` | GET    | API Key or Session | Get user's subscription status |
-| `/api/billing/checkout`    | POST   | API Key or Session | Create Stripe checkout session |
-
-### Public Routes
-
-| Endpoint                  | Method | Description                                   |
-| ------------------------- | ------ | --------------------------------------------- |
-| `/api/billing/portal`     | GET    | Entry point for billing portal (JWT in query) |
-| `/api/billing/webhook`    | POST   | Stripe webhook handler                        |
-| `/api/apps/[appId]/plans` | GET    | Get pricing plans for a specific app          |
-
-## Environment Variables
-
-| Variable                | Required | Description                                                                 |
-| ----------------------- | -------- | --------------------------------------------------------------------------- |
-| `DATABASE_URL`          | ✅       | PostgreSQL connection string                                                |
-| `SAAS_JWT_SECRET`       | ✅       | Shared secret for JWT signing/verification                                  |
-| `CRON_SECRET`           | ✅       | Secret for authenticating cron job requests                                 |
-| `STRIPE_SECRET_KEY`     | Optional | Global fallback Stripe secret key (used when an app has no per-app key set) |
-| `STRIPE_WEBHOOK_SECRET` | Optional | Global fallback Stripe webhook secret                                       |
-| `STRIPE_PK_KEY`         | Optional | Global fallback Stripe publishable key                                      |
-| `RESEND_API_KEY`        | Optional | Global fallback Resend key (used when an app has no per-app key set)        |
-
-> **Note:** Stripe keys and price/product IDs are no longer required infrastructure secrets. Each SaaS app registers its own Stripe credentials and pricing plans via `create-app.ts` or the `register-app.yml` CI workflow. The global env vars serve only as a fallback when no per-app key is stored.
->
-> **Note:** Each registered app can store its own `resendApiKey` and `fromEmail` in the database. These take precedence over the global `RESEND_API_KEY` fallback.
-
-## Stripe Credentials
-
-Stripe key ownership is **per SaaS app** — each registered app stores its own Stripe secret key, publishable key, and webhook signing secret in the database. This means each SaaS product points to its own Stripe account, and the billing portal never needs global Stripe credentials in its infrastructure secrets.
-
-### How it works
-
-1. When a Stripe API call is made (checkout, cancellation, webhook verification), the app's own `stripeSecretKey` / `stripeWebhookSecret` is fetched from the database.
-2. If the app has no per-app key stored, it falls back to the global `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` environment variables.
-3. If neither is available, the request fails with a clear error.
-
-### Webhook endpoint
-
-Each app gets a dedicated webhook endpoint:
-
-```
-POST /api/billing/webhook/{appId}
-```
-
-Register this URL in your Stripe dashboard (under **Developers → Webhooks**) with your app's `whsec_...` signing secret.
-
-### Registering Stripe credentials for an app
-
-Stripe credentials are always injected at runtime — they are never stored in the plans JSON file or committed to the repo.
-
-**Via CI (recommended):** trigger `register-app.yml` and fill in `stripe_secret_key`, `stripe_publishable_key`, and `stripe_webhook_secret` as workflow inputs. They are masked in logs and written directly to the database.
-
-**Locally:**
+**5. Gate features** by calling the status endpoint from your backend:
 
 ```bash
-APP_STRIPE_SECRET_KEY=sk_live_... \
-APP_STRIPE_PK_KEY=pk_live_... \
-APP_STRIPE_WEBHOOK_SECRET=whsec_... \
-npx tsx scripts/create-app.ts saas-a "My Todo App" ./plans.json
+GET /api/subscription/status?appId=<app-id>&externalUserId=<user-id>
+x-api-key: <your-api-key>
 ```
 
-Re-running either method on an existing app only patches the credentials; the API key and plans are preserved.
+## Billing models
 
-## Email Notifications
+| `billingType`                     | How it works                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------------- |
+| `flat_rate`                       | Fixed monthly charge                                                                |
+| `flat_rate` + `freeUnitsPerMonth` | Free tier with a hard usage cap; returns `allowed: false` at the limit              |
+| `metered`                         | No monthly fee — each unit fires a Stripe Billing Meter event, billed at period end |
+| `volume`                          | Like metered with a committed minimum and lower per-unit rate                       |
 
-This app sends transactional emails via [Resend](https://resend.com). Email ownership is **per SaaS app** — each registered app can use its own Resend API key and sending domain so that emails appear to come from the SaaS product, not from the billing portal.
+Plans can be updated at any time by re-running `register-app.yml` with a new plans file. Plans not present in the new file are deactivated automatically.
 
-### How it works
+## API reference
 
-1. When a Stripe webhook fires (e.g. `checkout.session.completed`), the webhook handler looks up the app in the database.
-2. If the app has a `resendApiKey` and `fromEmail` stored, those are used for the email send.
-3. If not, the handler falls back to the global `RESEND_API_KEY` environment variable.
-4. If neither is available, the email send is skipped gracefully.
+| Endpoint                      | Method | Auth             | Description                       |
+| ----------------------------- | ------ | ---------------- | --------------------------------- |
+| `/api/subscription/status`    | GET    | API Key          | Subscription status for a user    |
+| `/api/billing/checkout`       | POST   | API Key          | Create a Stripe Checkout session  |
+| `/api/billing/portal`         | GET    | JWT (query)      | Entry point for the hosted portal |
+| `/api/billing/webhook/:appId` | POST   | Stripe signature | Webhook receiver                  |
+| `/api/apps/:appId/plans`      | GET    | —                | Public plan listing for an app    |
 
-### Registering email credentials for an app
+## Environment variables
 
-Email credentials are always injected at runtime — they are never stored in the plans JSON file.
+| Variable                | Required | Description                                           |
+| ----------------------- | -------- | ----------------------------------------------------- |
+| `DATABASE_URL`          | ✅       | PostgreSQL connection string                          |
+| `SAAS_JWT_SECRET`       | ✅       | Shared secret for JWT signing                         |
+| `CRON_SECRET`           | ✅       | Secret for cron job requests                          |
+| `FIELD_ENCRYPTION_KEY`  | ✅       | 64-hex-char key for AES-256-GCM credential encryption |
+| `STRIPE_SECRET_KEY`     | Optional | Global fallback if app has no per-app key             |
+| `STRIPE_WEBHOOK_SECRET` | Optional | Global fallback webhook secret                        |
+| `RESEND_API_KEY`        | Optional | Global fallback email key                             |
 
-**Via CI (recommended):** trigger `register-app.yml` and fill in `resend_api_key` and `from_email` as workflow inputs. They are masked in logs and written directly to the database.
+## Credential encryption
 
-**Locally:**
+Stripe keys (`stripeSecretKey`, `stripeWebhookSecret`, `stripePublishableKey`) are encrypted with AES-256-GCM before being written to the database. The format is `enc:v1:<iv>:<tag>:<ciphertext>`. Plain-text values are accepted as a backward-compat fallback.
+
+To encrypt any existing plain-text credentials in the DB, run the `encrypt-keys.yml` workflow (manual trigger, with a dry-run option) or locally:
 
 ```bash
-APP_RESEND_API_KEY=re_live_... \
-APP_FROM_EMAIL=billing@yourapp.com \
-npx tsx scripts/create-app.ts saas-a "My Todo App" ./plans.json
+FIELD_ENCRYPTION_KEY=<64-hex> npx tsx scripts/encrypt-existing-keys.ts
+# Dry run first:
+FIELD_ENCRYPTION_KEY=<64-hex> DRY_RUN=true npx tsx scripts/encrypt-existing-keys.ts
 ```
 
-Re-running either method on an existing app only patches the email credentials; the API key and plans are preserved.
-
-### From address
-
-The `fromEmail` must be an address on a domain you have verified in Resend (DNS records added to the domain). It is independent of your GCP routing — Resend delivers the email directly via its own infrastructure.
+Generate a key: `openssl rand -hex 32`
 
 ## Development
 
 ```bash
-# Install dependencies
 yarn install
-
-# Set up database
 npx prisma migrate dev
-
-# Seed database
-npx prisma db seed
-
-# Run development server
-yarn run dev
+yarn dev
 ```
-
-## Scripts
-
-### Create Test Subscription
-
-Create a test subscription for local development:
-
-```bash
-npm run create-test-subscription -- <appId> <externalUserId> [minutes]
-
-# Example: 30-minute test subscription
-npm run create-test-subscription -- myApp user123 30
-```
-
-### Cron: Downgrade Expired Subscriptions
-
-Downgrade expired subscriptions to `free_trial`. Uses Stripe as source of truth.
-
-```bash
-# Expired only (default) - checks subscriptions past currentPeriodEnd
-curl -X POST http://localhost:3000/api/cron/downgrade-expired \
-  -H "x-cron-secret: YOUR_CRON_SECRET"
-
-# Full sync - checks ALL active subscriptions against Stripe
-# Use to catch deleted/canceled subscriptions
-curl -X POST "http://localhost:3000/api/cron/downgrade-expired?mode=full" \
-  -H "x-cron-secret: YOUR_CRON_SECRET"
-```
-
-**GCP Cloud Scheduler:**
-
-```bash
-gcloud scheduler jobs create http downgrade-expired \
-  --location=us-central1 \
-  --schedule="*/15 * * * *" \
-  --uri="https://your-app.com/api/cron/downgrade-expired" \
-  --http-method=POST \
-  --headers="x-cron-secret=YOUR_CRON_SECRET"
-```
-
-## Deployment
-
-This app is designed to run on Google Cloud Run with Cloud Scheduler for cron jobs.
-
-See deployment documentation for details.
-
----
-
-## Pay-as-you-go Billing
-
-The billing service supports three billing models that can be mixed across plans for the same app:
-
-| Model             | `billingType`                     | How it works                                                                               |
-| ----------------- | --------------------------------- | ------------------------------------------------------------------------------------------ |
-| **Flat-rate**     | `flat_rate`                       | Fixed monthly charge. Usage is tracked but never blocked or billed per-unit.               |
-| **Free tier**     | `flat_rate` + `freeUnitsPerMonth` | No charge, but usage is hard-capped. Returns `allowed: false` at the limit.                |
-| **Pay-as-you-go** | `metered`                         | No monthly fee. Every unit fires a Stripe Billing Meter event and is billed at period end. |
-| **Volume**        | `volume`                          | Like metered but typically with a committed minimum and a lower per-unit rate.             |
-
-### Architecture
-
-```
-┌──────────────────────┐        ┌──────────────────────────────────────────┐
-│   Your SaaS App      │        │           Lyrian Billing Service         │
-│                      │        │                                          │
-│  user does action    │        │  POST /api/usage/report                  │
-│  (e.g. verification) │──────► │                                          │
-│                      │        │  1. Resolve customer's plan              │
-│  if !allowed:        │        │  2. Check freeUnitsPerMonth cap (free)   │
-│    show upgrade UI   │◄───────│  3. Increment MonthlyUsage counter       │
-│  else:               │        │  4. Fire Stripe meter event (paygo)      │
-│    proceed           │        │                                          │
-└──────────────────────┘        └────────────────────┬─────────────────────┘
-                                                     │
-                                                     │ meterEvents.create()
-                                                     ▼
-                                          ┌──────────────────┐
-                                          │      Stripe      │
-                                          │                  │
-                                          │  Aggregates      │
-                                          │  usage events    │
-                                          │  → bills at      │
-                                          │  period end      │
-                                          └──────────────────┘
-```
-
-### Stripe Setup (one-time per app)
-
-**1. Create a Billing Meter in Stripe**
-
-In your Stripe dashboard → **Billing → Meters → Create meter**, or via API:
-
-```bash
-stripe billing meters create \
-  --event-name verifications \
-  --display-name "Verifications" \
-  --default-aggregation[formula] sum
-```
-
-Save the `event_name` (e.g. `verifications`) — this goes in `AppPlan.stripeMeterEventName`.
-
-**2. Create a metered Price linked to that meter**
-
-In Stripe dashboard → **Products → Create product**, then add a recurring metered price:
-
-```
-Billing model: Usage-based
-Meter: verifications
-Unit amount: $0.04
-```
-
-Save the `price_xxx` ID — this is your `stripePriceId` for the paygo plan.
-
-**3. Register the plan in the billing service**
-
-```json
-// paygo-plan.json
-[
-  {
-    "planKey": "paygo",
-    "name": "Pay as you go",
-    "description": "Only pay for what you use — $0.04 per verification",
-    "price": 0,
-    "billingType": "metered",
-    "unitAmount": 4,
-    "freeUnitsPerMonth": null,
-    "stripeMeterEventName": "verifications",
-    "stripeProductId": "prod_YOUR_PAYGO_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_PAYGO_PRICE_ID",
-    "sortOrder": 1
-  },
-  {
-    "planKey": "free_trial",
-    "name": "Free",
-    "description": "500 verifications/month, 1 project",
-    "price": 0,
-    "billingType": "flat_rate",
-    "freeUnitsPerMonth": 500,
-    "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_FREE_PRICE_ID",
-    "sortOrder": 0
-  },
-  {
-    "planKey": "volume",
-    "name": "Volume",
-    "description": "10,000 verifications/month minimum — $0.02/verification",
-    "price": 0,
-    "billingType": "volume",
-    "unitAmount": 2,
-    "minMonthlyUnits": 10000,
-    "freeUnitsPerMonth": null,
-    "stripeMeterEventName": "verifications",
-    "stripeProductId": "prod_YOUR_VOLUME_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_VOLUME_PRICE_ID",
-    "sortOrder": 2
-  }
-]
-```
-
-```bash
-npx tsx scripts/create-app.ts <app-id> "<app-name>" ./paygo-plan.json
-```
-
-**Updating plans for an existing app**
-
-Re-running `create-app.ts` (or the `register-app` workflow) with a new plans file on an existing app will upsert the plans in the file **and deactivate any plans that are no longer present**. This means switching from paygo to flat-rate (or vice versa) is as simple as providing a new plans file — old plan cards disappear from the billing portal automatically.
-
-### Webhook: Billing Period Storage (Stripe SDK v20)
-
-> ⚠️ **Stripe SDK v20 change:** `current_period_start` and `current_period_end` moved from `Stripe.Subscription` to `Stripe.SubscriptionItem`. The webhook stores billing period from `subscription.items.data[0]`:
-
-```typescript
-// app/api/billing/webhook/route.ts — fetchBillingPeriod step
-const firstItem = stripeSubscription.items.data[0];
-const period: BillingPeriod = {
-  start: new Date(firstItem.current_period_start * 1000),
-  end: new Date(firstItem.current_period_end * 1000),
-};
-```
-
-For metered subscriptions there is no upfront invoice, so there is no `latest_invoice` to fall back to for the period end. Using `items.data[0]` is the only reliable source and correctly reflects the full billing window (e.g. Jun 6 – Jul 6) rather than collapsing start and end to the same day.
-
-### Subscription Status API
-
-**GET `/api/subscription/status`** returns the most meaningful subscription record when a user has multiple (e.g. a stale `free_trial` record alongside a new active `paygo` subscription).
-
-**Priority sort:** `active > past_due > trialing > (other)` — ensures an active paid subscription is always surfaced over a stale trial record.
-
-**Expiry logic:** A subscription is only considered expired when its `currentPeriodEnd` is in the past **and** its Stripe status is not `active`. Active subscriptions trust Stripe's status directly — `currentPeriodEnd` may be temporarily stale on records written before a webhook fires.
-
-```typescript
-// lib/subscription/statusLogic.ts
-export function isExpired(subscription: SubscriptionRow, now: Date): boolean {
-  return (
-    subscription.status !== "active" && subscription.currentPeriodEnd < now
-  );
-}
-```
-
-### Post-Checkout Webhook Race Condition
-
-After a successful Stripe Checkout, Stripe redirects the user back to your app before the `checkout.session.completed` webhook has been processed. This means the status API may still return `free_trial` for a few seconds after checkout.
-
-**Recommended pattern (used in the example app):**
-
-1. Before redirecting to Stripe, set a flag: `sessionStorage.setItem("billing_checkout_pending", "1")`
-2. On return, if the flag is set and status is still `free_trial`, start polling `/api/billing/status` every 2 seconds
-3. Stop polling when the plan changes or after 30 seconds
-4. Show a subtle inline notice ("Confirming your subscription…") during polling — do not block the full page
-
-```typescript
-// Set flag before redirect
-sessionStorage.setItem("billing_checkout_pending", "1");
-window.location.href = checkoutUrl;
-
-// On settings page load
-const checkoutPending = sessionStorage.getItem("billing_checkout_pending") === "1";
-sessionStorage.removeItem("billing_checkout_pending");
-
-if (checkoutPending && status.plan === "free_trial") {
-  // poll /api/billing/status every 2s until plan changes or 30s elapsed
-}
-```
-
-This avoids a confusing UI where the user sees "Free Trial" immediately after paying.
-
-### Integration: Reporting Usage from Your SaaS App
-
-Your SaaS app calls the usage endpoint every time a billable action occurs. The billing service handles enforcement and Stripe reporting automatically.
-
-```typescript
-// In your SaaS app — call this on every billable action
-async function reportVerification(userId: string): Promise<{ allowed: boolean }> {
-  const res = await fetch(`${BILLING_APP_URL}/api/usage/report`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": BILLING_API_KEY,
-    },
-    body: JSON.stringify({
-      appId: "your-app-id",
-      externalUserId: userId,
-      quantity: 1,        // number of units consumed
-    }),
-  });
-
-  const data = await res.json();
-  // data: { allowed, used, cap, remaining, plan, billingType, yearMonth }
-  return data;
-}
-
-// Usage in your route handler
-const usage = await reportVerification(user.id);
-
-if (!usage.allowed) {
-  return Response.json({
-    error: "Monthly verification limit reached",
-    used: usage.used,
-    cap: usage.cap,
-    upgradeUrl: getBillingPortalUrl(user.id),
-  }, { status: 402 });
-}
-
-// proceed with the verification...
-```
-
-**What happens inside the service per plan type:**
-
-| Customer plan | `freeUnitsPerMonth` set? | Stripe meter event fired?     | Blocked at cap? |
-| ------------- | ------------------------ | ----------------------------- | --------------- |
-| `free_trial`  | Yes (e.g. 500)           | No                            | Yes             |
-| `paygo`       | No                       | Yes (`billingType: metered`)  | No              |
-| `volume`      | No                       | Yes (`billingType: volume`)   | No              |
-| `basic`/`pro` | No                       | No (`billingType: flat_rate`) | No              |
-
-### Querying Current Usage (for dashboard display)
-
-```typescript
-// GET /api/usage/current?appId=xxx&externalUserId=xxx
-// Returns: { allowed, used, cap, remaining, plan, billingType, yearMonth }
-
-const usage = await fetch(
-  `${BILLING_APP_URL}/api/usage/current?appId=your-app-id&externalUserId=${userId}`,
-  { headers: { "x-api-key": BILLING_API_KEY } }
-).then(r => r.json());
-
-// Example response for a free-tier user at 312/500:
-// { allowed: true, used: 312, cap: 500, remaining: 188, plan: "free_trial", ... }
-
-// Example response for a paygo user:
-// { allowed: true, used: 4821, cap: null, remaining: null, plan: "paygo", ... }
-```
-
-### The Upgrade Moment
-
-The natural upgrade triggers are:
-
-1. **Free → Paygo:** `reportUsage()` returns `allowed: false`. Your SaaS shows a prompt pointing to the billing portal where the paygo plan is listed. User subscribes with one click via Stripe Checkout (metered price). From that point, `reportUsage()` fires Stripe meter events instead of checking caps.
-
-2. **Paygo → Volume:** Happens out-of-band — you reach out to customers consistently spending $400+/month on paygo and offer volume at half the rate. They subscribe to the volume plan through the portal. The local `MonthlyUsage` counter still tracks usage for your records; Stripe handles the billing via the volume meter.
-
-### How Billing Works End-to-End (Paygo)
-
-```
-Month start
-    │
-    ├── User runs 1,000 verifications
-    │      Each one → POST /api/usage/report
-    │                  → MonthlyUsage.unitCount += 1
-    │                  → stripe.billing.meterEvents.create("verifications", value=1)
-    │
-    ├── Stripe aggregates all meter events throughout the month
-    │
-Month end
-    │
-    └── Stripe generates invoice: 1,000 × $0.04 = $40.00
-           → charges customer's card on file
-           → fires invoice.payment_succeeded webhook
-           → billing service records PaymentEvent
-```
-
-The `MonthlyUsage` table in the database is the **local source of truth** for enforcement and dashboard display. Stripe meter events are the **billing source of truth**. The two are kept in sync on every `reportUsage()` call. If a Stripe meter event fails to fire (transient API error), the local counter still incremented — a background reconciliation job can replay missed events using the `MonthlyUsage` records.
-
-### Architecture
-
-```
-┌──────────────────────┐        ┌──────────────────────────────────────────┐
-│   Your SaaS App      │        │           Lyrian Billing Service         │
-│                      │        │                                          │
-│  user does action    │        │  POST /api/usage/report                  │
-│  (e.g. verification) │──────► │                                          │
-│                      │        │  1. Resolve customer's plan              │
-│  if !allowed:        │        │  2. Check freeUnitsPerMonth cap (free)   │
-│    show upgrade UI   │◄───────│  3. Increment MonthlyUsage counter       │
-│  else:               │        │  4. Fire Stripe meter event (paygo)      │
-│    proceed           │        │                                          │
-└──────────────────────┘        └────────────────────┬─────────────────────┘
-                                                     │
-                                                     │ meterEvents.create()
-                                                     ▼
-                                          ┌──────────────────┐
-                                          │      Stripe      │
-                                          │                  │
-                                          │  Aggregates      │
-                                          │  usage events    │
-                                          │  → bills at      │
-                                          │  period end      │
-                                          └──────────────────┘
-```
-
-### Stripe Setup (one-time per app)
-
-**1. Create a Billing Meter in Stripe**
-
-In your Stripe dashboard → **Billing → Meters → Create meter**, or via API:
-
-```bash
-stripe billing meters create \
-  --event-name verifications \
-  --display-name "Verifications" \
-  --default-aggregation[formula] sum
-```
-
-Save the `event_name` (e.g. `verifications`) — this goes in `AppPlan.stripeMeterEventName`.
-
-**2. Create a metered Price linked to that meter**
-
-In Stripe dashboard → **Products → Create product**, then add a recurring metered price:
-
-```
-Billing model: Usage-based
-Meter: verifications
-Unit amount: $0.04
-```
-
-Save the `price_xxx` ID — this is your `stripePriceId` for the paygo plan.
-
-**3. Register the plan in the billing service**
-
-```json
-// paygo-plan.json
-[
-  {
-    "planKey": "paygo",
-    "name": "Pay as you go",
-    "description": "Only pay for what you use — $0.04 per verification",
-    "price": 0,
-    "billingType": "metered",
-    "unitAmount": 4,
-    "freeUnitsPerMonth": null,
-    "stripeMeterEventName": "verifications",
-    "stripeProductId": "prod_YOUR_PAYGO_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_PAYGO_PRICE_ID",
-    "sortOrder": 1
-  },
-  {
-    "planKey": "free_trial",
-    "name": "Free",
-    "description": "500 verifications/month, 1 project",
-    "price": 0,
-    "billingType": "flat_rate",
-    "freeUnitsPerMonth": 500,
-    "stripeProductId": "prod_YOUR_FREE_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_FREE_PRICE_ID",
-    "sortOrder": 0
-  },
-  {
-    "planKey": "volume",
-    "name": "Volume",
-    "description": "10,000 verifications/month minimum — $0.02/verification",
-    "price": 0,
-    "billingType": "volume",
-    "unitAmount": 2,
-    "minMonthlyUnits": 10000,
-    "freeUnitsPerMonth": null,
-    "stripeMeterEventName": "verifications",
-    "stripeProductId": "prod_YOUR_VOLUME_PRODUCT_ID",
-    "stripePriceId": "price_YOUR_VOLUME_PRICE_ID",
-    "sortOrder": 2
-  }
-]
-```
-
-```bash
-npx tsx scripts/add-plans.ts <app-id> ./paygo-plan.json
-```
-
-### Integration: Reporting Usage from Your SaaS App
-
-Your SaaS app calls the usage endpoint every time a billable action occurs. The billing service handles enforcement and Stripe reporting automatically.
-
-```typescript
-// In your SaaS app — call this on every billable action
-async function reportVerification(userId: string): Promise<{ allowed: boolean }> {
-  const res = await fetch(`${BILLING_APP_URL}/api/usage/report`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": BILLING_API_KEY,
-    },
-    body: JSON.stringify({
-      appId: "your-app-id",
-      externalUserId: userId,
-      quantity: 1,        // number of units consumed
-    }),
-  });
-
-  const data = await res.json();
-  // data: { allowed, used, cap, remaining, plan, billingType, yearMonth }
-  return data;
-}
-
-// Usage in your route handler
-const usage = await reportVerification(user.id);
-
-if (!usage.allowed) {
-  return Response.json({
-    error: "Monthly verification limit reached",
-    used: usage.used,
-    cap: usage.cap,
-    upgradeUrl: getBillingPortalUrl(user.id),
-  }, { status: 402 });
-}
-
-// proceed with the verification...
-```
-
-**What happens inside the service per plan type:**
-
-| Customer plan | `freeUnitsPerMonth` set? | Stripe meter event fired?     | Blocked at cap? |
-| ------------- | ------------------------ | ----------------------------- | --------------- |
-| `free_trial`  | Yes (e.g. 500)           | No                            | Yes             |
-| `paygo`       | No                       | Yes (`billingType: metered`)  | No              |
-| `volume`      | No                       | Yes (`billingType: volume`)   | No              |
-| `basic`/`pro` | No                       | No (`billingType: flat_rate`) | No              |
-
-### Querying Current Usage (for dashboard display)
-
-```typescript
-// GET /api/usage/current?appId=xxx&externalUserId=xxx
-// Returns: { allowed, used, cap, remaining, plan, billingType, yearMonth }
-
-const usage = await fetch(
-  `${BILLING_APP_URL}/api/usage/current?appId=your-app-id&externalUserId=${userId}`,
-  { headers: { "x-api-key": BILLING_API_KEY } }
-).then(r => r.json());
-
-// Example response for a free-tier user at 312/500:
-// { allowed: true, used: 312, cap: 500, remaining: 188, plan: "free_trial", ... }
-
-// Example response for a paygo user:
-// { allowed: true, used: 4821, cap: null, remaining: null, plan: "paygo", ... }
-```
-
-### The Upgrade Moment
-
-The natural upgrade triggers are:
-
-1. **Free → Paygo:** `reportUsage()` returns `allowed: false`. Your SaaS shows a prompt pointing to the billing portal where the paygo plan is listed. User subscribes with one click via Stripe Checkout (metered price). From that point, `reportUsage()` fires Stripe meter events instead of checking caps.
-
-2. **Paygo → Volume:** Happens out-of-band — you reach out to customers consistently spending $400+/month on paygo and offer volume at half the rate. They subscribe to the volume plan through the portal. The local `MonthlyUsage` counter still tracks usage for your records; Stripe handles the billing via the volume meter.
-
-### How Billing Works End-to-End (Paygo)
-
-```
-Month start
-    │
-    ├── User runs 1,000 verifications
-    │      Each one → POST /api/usage/report
-    │                  → MonthlyUsage.unitCount += 1
-    │                  → stripe.billing.meterEvents.create("verifications", value=1)
-    │
-    ├── Stripe aggregates all meter events throughout the month
-    │
-Month end
-    │
-    └── Stripe generates invoice: 1,000 × $0.04 = $40.00
-           → charges customer's card on file
-           → fires invoice.payment_succeeded webhook
-           → billing service records PaymentEvent
-```
-
-The `MonthlyUsage` table in the database is the **local source of truth** for enforcement and dashboard display. Stripe meter events are the **billing source of truth**. The two are kept in sync on every `reportUsage()` call. If a Stripe meter event fails to fire (transient API error), the local counter still incremented — a background reconciliation job can replay missed events using the `MonthlyUsage` records.
