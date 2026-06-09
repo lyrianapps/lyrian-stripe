@@ -10,9 +10,9 @@ Delegate your entire Stripe billing layer to one service. Register your plans, d
 
 The `example-app/` directory contains a full TodoApp demo that integrates with Lyrian. It lets new users pick a billing type at registration (flat-rate subscription or pay-as-you-go), then exercises the full flow — checkout, portal, plan switching, and cancellation.
 
-| Register                                            | Subscription                                                              | Settings                                                      |
-| --------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| [![Register](docs/todo-app.png)](docs/todo-app.png) | [![Subscription](docs/subscription-page.png)](docs/subscription-page.png) | [![Settings](docs/settings-page.png)](docs/settings-page.png) |
+| Register                                            | Subscription                                                                      | Settings                                                      |
+| --------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| [![Register](docs/todo-app.png)](docs/todo-app.png) | [![Lyrian Stripe Portal](docs/subscription-page.png)](docs/subscription-page.png) | [![Settings](docs/settings-page.png)](docs/settings-page.png) |
 
 **[Try the live demo →](https://lyrian-example-app-494926016713.us-central1.run.app/login)**
 
