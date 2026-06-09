@@ -41,6 +41,14 @@ export default async function RootLayout({
                   >
                     Todos
                   </Link>
+                  {session.billingType === "flat_rate" && (
+                    <Link
+                      href="/analytics"
+                      className="text-gray-500 hover:text-gray-900 transition-colors"
+                    >
+                      Analytics
+                    </Link>
+                  )}
                   <Link
                     href="/settings"
                     className="text-gray-500 hover:text-gray-900 transition-colors"
