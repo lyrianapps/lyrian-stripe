@@ -16,6 +16,8 @@ The `example-app/` directory contains a full TodoApp demo that integrates with L
 
 **[Try the live demo →](https://lyrian-example-app-494926016713.us-central1.run.app/login)**
 
+> The demo runs on Stripe test mode. Use card `4242 4242 4242 4242` with any future expiry and any CVC to simulate a successful payment. See [Stripe test cards](#stripe-test-cards) for decline scenarios.
+
 ## What it does
 
 - **Multi-app** — one deployment serves multiple SaaS products; each app has isolated Stripe credentials, plans, and email config
@@ -222,6 +224,20 @@ await fetch(`${process.env.BILLING_APP_URL}/api/usage/report`, {
 | `STRIPE_SECRET_KEY`     | Optional | Global fallback if app has no per-app key             |
 | `STRIPE_WEBHOOK_SECRET` | Optional | Global fallback webhook secret                        |
 | `RESEND_API_KEY`        | Optional | Global fallback email key                             |
+
+## Stripe test cards
+
+Use these in the Stripe Checkout form when testing. Any future expiry date and any 3-digit CVC work.
+
+| Card number           | Scenario                             |
+| --------------------- | ------------------------------------ |
+| `4242 4242 4242 4242` | Successful payment                   |
+| `4000 0025 0000 3155` | Requires 3D Secure authentication    |
+| `4000 0000 0000 9995` | Always declined (insufficient funds) |
+| `4100 0000 0000 0019` | Always declined (fraudulent)         |
+| `4000 0000 0000 0069` | Always declined (expired card)       |
+
+Full list: [stripe.com/docs/testing#cards](https://stripe.com/docs/testing#cards)
 
 ## Development
 
