@@ -272,6 +272,22 @@ model MonthlyUsage {
   @@index([appId, yearMonth])
 }
 
+// Deduplication table for POST /api/usage/report idempotency keys.
+// Prevents double-billing when a caller retries a request (e.g. after a network timeout).
+// Records expire after 24 hours — old rows can be pruned by a cron job.
+model UsageIdempotencyKey {
+  id                String   @id @default(cuid())
+  // Caller-supplied idempotency key (e.g. "projectId:identifier:minuteBucket")
+  key               String   @unique
+  billingCustomerId String
+  appId             String
+  // Serialised UsageResult returned on first processing — replayed on duplicates
+  resultJson        String
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model StripeEvent {
   id   String @id
   type String

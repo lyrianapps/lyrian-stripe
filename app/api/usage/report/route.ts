@@ -10,6 +10,12 @@ const ReportUsageSchema = z.object({
   appId: z.string().min(1),
   externalUserId: z.string().min(1),
   quantity: z.number().int().positive().default(1),
+  /**
+   * Optional idempotency key. If the same key is seen again within 24 hours,
+   * the original result is returned without incrementing the counter.
+   * Recommended format: `${stableId}:${Math.floor(Date.now() / 60_000)}`
+   */
+  idempotencyKey: z.string().min(1).max(255).optional(),
 });
 
 const log = logger.child({ route: "POST /api/usage/report" });
@@ -31,8 +37,13 @@ const reportHandler = withApiKey(async (req: NextRequest) => {
     );
   }
 
-  const { appId, externalUserId, quantity } = parsed.data;
-  const result = await reportUsage({ appId, externalUserId, quantity });
+  const { appId, externalUserId, quantity, idempotencyKey } = parsed.data;
+  const result = await reportUsage({
+    appId,
+    externalUserId,
+    quantity,
+    idempotencyKey,
+  });
 
   if (!result.allowed) {
     log.warn(

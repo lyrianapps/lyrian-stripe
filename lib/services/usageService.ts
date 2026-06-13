@@ -14,6 +14,15 @@ export interface UsageReportInput {
   externalUserId: string;
   /** Number of units to report. Defaults to 1. */
   quantity?: number;
+  /**
+   * Optional idempotency key supplied by the caller.
+   * If a report with this key was already processed, the original result is
+   * returned without incrementing the counter or firing a Stripe meter event.
+   *
+   * Recommended format: `${stableId}:${Math.floor(Date.now() / 60_000)}`
+   * (bucketed to the minute — same action within 60 s deduplicates naturally).
+   */
+  idempotencyKey?: string;
 }
 
 export interface UsageResult {
@@ -116,13 +125,28 @@ async function findActiveSubscription(billingCustomerId: string) {
 export async function reportUsage(
   input: UsageReportInput,
 ): Promise<UsageResult> {
-  const { appId, externalUserId, quantity = 1 } = input;
+  const { appId, externalUserId, quantity = 1, idempotencyKey } = input;
 
   if (quantity < 1 || !Number.isInteger(quantity)) {
     throw new Error("quantity must be a positive integer");
   }
 
   const yearMonth = currentYearMonth();
+
+  // ── 0. Idempotency check ──────────────────────────────────────────────────
+  // If the caller supplied a key we've already seen, replay the original result
+  // without touching the counter or Stripe — prevents double-billing on retries.
+  if (idempotencyKey) {
+    const existing = await prisma.usageIdempotencyKey.findUnique({
+      where: { key: idempotencyKey },
+    });
+    if (existing) {
+      logger.info(
+        `[usage] Duplicate idempotency key "${idempotencyKey}" — replaying cached result`,
+      );
+      return JSON.parse(existing.resultJson) as UsageResult;
+    }
+  }
 
   // ── 1. Resolve customer ───────────────────────────────────────────────────
   const customer = await prisma.billingCustomer.findUnique({
@@ -227,7 +251,7 @@ export async function reportUsage(
     `[usage] customer=${customer.id} plan=${planKey} month=${yearMonth} used=${used}${cap !== null ? `/${cap}` : ""}`,
   );
 
-  return {
+  const result: UsageResult = {
     allowed: true,
     used,
     cap,
@@ -236,6 +260,20 @@ export async function reportUsage(
     billingType: config.billingType,
     yearMonth,
   };
+
+  // ── 6. Persist idempotency key so retries replay this result ─────────────
+  if (idempotencyKey) {
+    await prisma.usageIdempotencyKey.create({
+      data: {
+        key: idempotencyKey,
+        billingCustomerId: customer.id,
+        appId,
+        resultJson: JSON.stringify(result),
+      },
+    });
+  }
+
+  return result;
 }
 
 /**
