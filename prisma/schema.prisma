@@ -42,6 +42,7 @@ enum SubscriptionEventType {
   reactivated
   payment_failed
   payment_succeeded
+  warning_sent
 }
 
 model App {

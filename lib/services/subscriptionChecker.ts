@@ -4,6 +4,7 @@ import { logger as _logger } from "@/app/middleware/logger";
 import {
   downgradeSubscription,
   updateSubscriptionPeriod,
+  DowngradeEmailContext,
 } from "@/lib/services/subscription";
 
 const logger = _logger.child({ module: "subscriptionChecker" });
@@ -18,6 +19,8 @@ export interface SubscriptionCandidate {
   stripeSubscriptionId: string;
   plan: "basic" | "pro" | "paygo" | "volume";
   appStripeSecretKey?: string | null;
+  /** Optional \u2014 if provided, a downgrade email is sent to this customer. */
+  emailContext?: DowngradeEmailContext;
 }
 
 /**
@@ -42,7 +45,11 @@ export class TestSubscriptionChecker implements SubscriptionChecker {
   async check(
     subscription: SubscriptionCandidate,
   ): Promise<SubscriptionCheckResult> {
-    await downgradeSubscription(subscription.id, subscription.plan);
+    await downgradeSubscription(
+      subscription.id,
+      subscription.plan,
+      subscription.emailContext,
+    );
     return { action: "downgraded", reason: "test_subscription_expired" };
   }
 }
@@ -70,7 +77,11 @@ export class StripeSubscriptionChecker implements SubscriptionChecker {
         logger.info(
           `[stripe] Subscription ${subscription.id} not found in Stripe — downgrading`,
         );
-        await downgradeSubscription(subscription.id, subscription.plan);
+        await downgradeSubscription(
+          subscription.id,
+          subscription.plan,
+          subscription.emailContext,
+        );
         return {
           action: "downgraded",
           reason: "stripe_subscription_not_found",
@@ -101,7 +112,11 @@ export class StripeSubscriptionChecker implements SubscriptionChecker {
     const { status } = stripeSubscription;
 
     if (this.isExpiredStatus(status)) {
-      await downgradeSubscription(subscription.id, subscription.plan);
+      await downgradeSubscription(
+        subscription.id,
+        subscription.plan,
+        subscription.emailContext,
+      );
       return { action: "downgraded", reason: `stripe_status_${status}` };
     }
 

@@ -1,7 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import { logger as _logger } from "@/app/middleware/logger";
+import { sendSubscriptionEmail, AppEmailCredentials } from "@/lib/email";
 
 const logger = _logger.child({ module: "subscription" });
+
+export interface DowngradeEmailContext {
+  to: string;
+  customerName?: string;
+  appName: string;
+  fromPlanName: string;
+  credentials?: AppEmailCredentials;
+}
 
 /**
  * Downgrade a subscription to free_trial
@@ -9,6 +18,7 @@ const logger = _logger.child({ module: "subscription" });
 export async function downgradeSubscription(
   subscriptionId: string,
   fromPlan: "basic" | "pro" | "paygo" | "volume" = "basic",
+  emailContext?: DowngradeEmailContext,
 ) {
   await prisma.$transaction([
     prisma.subscription.update({
@@ -32,6 +42,22 @@ export async function downgradeSubscription(
   ]);
 
   logger.info(`[subscription] Downgraded subscription ${subscriptionId}`);
+
+  if (emailContext) {
+    await sendSubscriptionEmail(
+      "subscription_downgraded",
+      {
+        to: emailContext.to,
+        customerName: emailContext.customerName,
+        appName: emailContext.appName,
+        planName: "Free Trial",
+        previousPlanName: emailContext.fromPlanName,
+      },
+      emailContext.credentials,
+    ).catch((err) =>
+      logger.warn({ err }, "[subscription] Failed to send downgrade email"),
+    );
+  }
 }
 
 /**

@@ -40,6 +40,8 @@ export type EmailEventType =
   | "subscription_upgraded"
   | "subscription_downgraded"
   | "subscription_canceled"
+  | "subscription_expiring_soon"
+  | "usage_bill_upcoming"
   | "payment_failed";
 
 export interface EmailContext {
@@ -50,6 +52,10 @@ export interface EmailContext {
   previousPlanName?: string;
   amount?: number | null;
   currency?: string | null;
+  /** ISO date string — used for expiry / billing warnings */
+  periodEnd?: string | null;
+  /** Estimated metered usage amount in cents */
+  estimatedAmount?: number | null;
 }
 
 /**
@@ -179,6 +185,31 @@ function getEmailContent(
           <p>You'll continue to have access until the end of your current billing period.</p>
           <p>If you change your mind, you can resubscribe at any time.</p>
           <p>We'd love to hear your feedback on how we can improve.</p>
+          <p>Best regards,<br>The ${appName} Team</p>
+        `,
+      };
+
+    case "subscription_expiring_soon":
+      return {
+        subject: `Your ${appName} subscription expires soon`,
+        html: `
+          <h1>Your subscription is expiring soon</h1>
+          <p>Hi ${name},</p>
+          <p>Your <strong>${planName}</strong> plan on ${appName} will expire on <strong>${context.periodEnd ? new Date(context.periodEnd).toLocaleDateString() : "soon"}</strong>.</p>
+          <p>To keep uninterrupted access, renew or update your payment method before then.</p>
+          <p>Best regards,<br>The ${appName} Team</p>
+        `,
+      };
+
+    case "usage_bill_upcoming":
+      return {
+        subject: `Your ${appName} usage bill is coming up`,
+        html: `
+          <h1>Upcoming usage bill</h1>
+          <p>Hi ${name},</p>
+          <p>Your <strong>${planName}</strong> billing period ends on <strong>${context.periodEnd ? new Date(context.periodEnd).toLocaleDateString() : "soon"}</strong>.</p>
+          ${context.estimatedAmount ? `<p>Based on your usage so far, your estimated bill is <strong>${(context.estimatedAmount / 100).toFixed(2)} ${currency?.toUpperCase() || "USD"}</strong>.</p>` : ""}
+          <p>You can review your usage at any time in your billing portal.</p>
           <p>Best regards,<br>The ${appName} Team</p>
         `,
       };

@@ -5,6 +5,7 @@ import {
   SubscriptionCandidate,
   SubscriptionCheckResult,
 } from "@/lib/services/subscriptionChecker";
+import { sendSubscriptionEmail } from "@/lib/email";
 
 const logger = _logger.child({ module: "expirationService" });
 
@@ -153,4 +154,249 @@ function updateResults(
       results.errors++;
       break;
   }
+}
+
+export type WarningResults = {
+  checked: number;
+  emailed: number;
+  skipped: number;
+  errors: number;
+};
+
+/**
+ * Send renewal warning emails to flat-rate (basic/pro) customers whose
+ * subscription ends within the next `daysAhead` days.
+ *
+ * Safe to run daily — only sends if no warning was sent in the last 6 days
+ * (tracked via subscriptionEvent type "renewal_warning_sent").
+ */
+export async function sendRenewalWarnings(
+  daysAhead = 3,
+): Promise<WarningResults> {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+
+  const results: WarningResults = {
+    checked: 0,
+    emailed: 0,
+    skipped: 0,
+    errors: 0,
+  };
+
+  const subscriptions = await prisma.subscription.findMany({
+    where: {
+      plan: { in: ["basic", "pro"] },
+      status: "active",
+      currentPeriodEnd: { gte: now, lte: cutoff },
+    },
+    select: {
+      id: true,
+      plan: true,
+      currentPeriodEnd: true,
+      billingCustomer: {
+        select: {
+          email: true,
+          app: {
+            select: {
+              name: true,
+              resendApiKey: true,
+              fromEmail: true,
+            },
+          },
+        },
+      },
+      // Check if we already sent a warning recently
+      events: {
+        where: {
+          type: "warning_sent",
+          createdAt: { gte: new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000) },
+        },
+        take: 1,
+      },
+    },
+  });
+
+  for (const sub of subscriptions) {
+    results.checked++;
+
+    if (sub.events.length > 0) {
+      results.skipped++;
+      continue;
+    }
+
+    const email = sub.billingCustomer.email;
+    if (!email) {
+      results.skipped++;
+      continue;
+    }
+
+    try {
+      await sendSubscriptionEmail(
+        "subscription_expiring_soon",
+        {
+          to: email,
+          appName: sub.billingCustomer.app.name,
+          planName: sub.plan,
+          periodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
+        },
+        {
+          resendApiKey: sub.billingCustomer.app.resendApiKey,
+          fromEmail: sub.billingCustomer.app.fromEmail,
+        },
+      );
+
+      // Record that we sent the warning so we don't double-send
+      await prisma.subscriptionEvent.create({
+        data: {
+          subscriptionId: sub.id,
+          type: "warning_sent",
+          fromPlan: sub.plan,
+          toPlan: sub.plan,
+        },
+      });
+
+      results.emailed++;
+    } catch (err) {
+      logger.warn(
+        { err },
+        `[cron] Failed to send renewal warning for sub ${sub.id}`,
+      );
+      results.errors++;
+    }
+  }
+
+  logger.info(`[cron] Renewal warnings: ${JSON.stringify(results)}`);
+  return results;
+}
+
+/**
+ * Send upcoming bill warnings to metered (paygo/volume) customers whose
+ * billing period ends within `daysAhead` days.
+ * Includes their current month's unit count as an estimated usage indicator.
+ */
+export async function sendUsageBillWarnings(
+  daysAhead = 3,
+): Promise<WarningResults> {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+  const yearMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+
+  const results: WarningResults = {
+    checked: 0,
+    emailed: 0,
+    skipped: 0,
+    errors: 0,
+  };
+
+  const subscriptions = await prisma.subscription.findMany({
+    where: {
+      plan: { in: ["paygo", "volume"] },
+      status: "active",
+      currentPeriodEnd: { gte: now, lte: cutoff },
+    },
+    select: {
+      id: true,
+      plan: true,
+      currentPeriodEnd: true,
+      billingCustomer: {
+        select: {
+          id: true,
+          email: true,
+          appId: true,
+          app: {
+            select: {
+              name: true,
+              resendApiKey: true,
+              fromEmail: true,
+            },
+          },
+        },
+      },
+      events: {
+        where: {
+          type: "warning_sent",
+          createdAt: { gte: new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000) },
+        },
+        take: 1,
+      },
+    },
+  });
+
+  for (const sub of subscriptions) {
+    results.checked++;
+
+    if (sub.events.length > 0) {
+      results.skipped++;
+      continue;
+    }
+
+    const email = sub.billingCustomer.email;
+    if (!email) {
+      results.skipped++;
+      continue;
+    }
+
+    // Look up current month's usage to estimate the bill
+    const usage = await prisma.monthlyUsage.findUnique({
+      where: {
+        billingCustomerId_yearMonth: {
+          billingCustomerId: sub.billingCustomer.id,
+          yearMonth,
+        },
+      },
+      select: { unitCount: true },
+    });
+
+    // Get unit price from the plan config
+    const planConfig = await prisma.appPlan.findFirst({
+      where: {
+        appId: sub.billingCustomer.appId,
+        planKey: sub.plan,
+        isActive: true,
+      },
+      select: { unitAmount: true },
+    });
+
+    const estimatedAmount =
+      usage && planConfig?.unitAmount
+        ? usage.unitCount * planConfig.unitAmount
+        : null;
+
+    try {
+      await sendSubscriptionEmail(
+        "usage_bill_upcoming",
+        {
+          to: email,
+          appName: sub.billingCustomer.app.name,
+          planName: sub.plan,
+          periodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
+          estimatedAmount,
+        },
+        {
+          resendApiKey: sub.billingCustomer.app.resendApiKey,
+          fromEmail: sub.billingCustomer.app.fromEmail,
+        },
+      );
+
+      await prisma.subscriptionEvent.create({
+        data: {
+          subscriptionId: sub.id,
+          type: "warning_sent",
+          fromPlan: sub.plan,
+          toPlan: sub.plan,
+        },
+      });
+
+      results.emailed++;
+    } catch (err) {
+      logger.warn(
+        { err },
+        `[cron] Failed to send usage bill warning for sub ${sub.id}`,
+      );
+      results.errors++;
+    }
+  }
+
+  logger.info(`[cron] Usage bill warnings: ${JSON.stringify(results)}`);
+  return results;
 }
