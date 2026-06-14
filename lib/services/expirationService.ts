@@ -50,14 +50,16 @@ export async function findExpiredCandidates(): Promise<
 
 /**
  * Find ALL active paid subscriptions for full Stripe sync
- * This catches deleted/canceled subscriptions regardless of period end date
+ * This catches deleted/canceled subscriptions regardless of period end date.
+ * Includes metered/volume plans — Stripe manages their billing period, but
+ * cancellations still need to be synced back to our DB.
  */
 export async function findAllActivePaidSubscriptions(): Promise<
   SubscriptionCandidate[]
 > {
   const subscriptions = await prisma.subscription.findMany({
     where: {
-      plan: { in: ["basic", "pro"] },
+      plan: { in: ["basic", "pro", "paygo", "volume"] },
       status: "active",
     },
     select: {
@@ -73,7 +75,7 @@ export async function findAllActivePaidSubscriptions(): Promise<
   return subscriptions.map((s) => ({
     id: s.id,
     stripeSubscriptionId: s.stripeSubscriptionId,
-    plan: s.plan as "basic" | "pro",
+    plan: s.plan as "basic" | "pro" | "paygo" | "volume",
     appStripeSecretKey: s.billingCustomer.app.stripeSecretKey,
   }));
 }

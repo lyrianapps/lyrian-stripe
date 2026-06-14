@@ -16,7 +16,7 @@ export type SubscriptionCheckResult = {
 export interface SubscriptionCandidate {
   id: string;
   stripeSubscriptionId: string;
-  plan: "basic" | "pro";
+  plan: "basic" | "pro" | "paygo" | "volume";
   appStripeSecretKey?: string | null;
 }
 

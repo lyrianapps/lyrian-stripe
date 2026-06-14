@@ -8,7 +8,7 @@ const logger = _logger.child({ module: "subscription" });
  */
 export async function downgradeSubscription(
   subscriptionId: string,
-  fromPlan: "basic" | "pro" = "basic",
+  fromPlan: "basic" | "pro" | "paygo" | "volume" = "basic",
 ) {
   await prisma.$transaction([
     prisma.subscription.update({
