@@ -46,6 +46,17 @@ async function main() {
 
   const secret = decrypt(app.stripeWebhookSecret);
   console.log(`Using webhook secret from app ${app.id}`);
+  console.log(
+    `Secret source: ${app.stripeWebhookSecret.startsWith("enc:v1:") ? "decrypted from DB" : "plain-text from DB"}`,
+  );
+
+  if (!secret.startsWith("whsec_")) {
+    console.error(
+      `Decrypted value does not look like a Stripe webhook secret (expected whsec_... prefix).\n` +
+        `This usually means FIELD_ENCRYPTION_KEY does not match the key used to encrypt the DB record.`,
+    );
+    process.exit(1);
+  }
   const endpoint = `${billingAppUrl}/api/billing/webhook`;
 
   // Build a minimal Stripe-shaped ping event
