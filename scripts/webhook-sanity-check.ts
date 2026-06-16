@@ -1,9 +1,10 @@
 /**
  * Stripe webhook sanity check
  *
- * Queries the DB for the first app that has a stripeWebhookSecret configured,
- * constructs a signed `ping` event, and POSTs it to the billing service's
- * webhook endpoint. Verifies the service returns 200, which confirms:
+ * Queries the DB for all apps that have a stripeWebhookSecret configured,
+ * constructs a signed `ping` event for each, and POSTs it to the billing
+ * service's per-app webhook endpoint. Verifies the service returns 200, which
+ * confirms:
  *   - The per-app stripeWebhookSecret in the DB matches what the service uses
  *   - The webhook route is reachable and not crashing on startup
  *
@@ -22,47 +23,16 @@ import { URL } from "url";
 import { prisma } from "../lib/prisma";
 import { decrypt } from "../lib/crypto";
 
-async function main() {
-  const billingAppUrl = process.env.BILLING_APP_URL;
+async function pingApp(
+  billingAppUrl: string,
+  appId: string,
+  secret: string,
+): Promise<void> {
+  const endpoint = `${billingAppUrl}/api/billing/webhook/${appId}`;
 
-  if (!billingAppUrl) {
-    console.error("Error: BILLING_APP_URL is not set");
-    process.exit(1);
-  }
-
-  // Fetch the webhook secret from the DB — it's stored per-app, not as a
-  // global env var. Use the first app that has one configured.
-  const app = await prisma.app.findFirst({
-    where: { stripeWebhookSecret: { not: null } },
-    select: { id: true, stripeWebhookSecret: true },
-  });
-
-  if (!app?.stripeWebhookSecret) {
-    console.warn(
-      "No app with a stripeWebhookSecret found in the DB — skipping sanity check.",
-    );
-    process.exit(0);
-  }
-
-  const secret = decrypt(app.stripeWebhookSecret);
-  console.log(`Using webhook secret from app ${app.id}`);
-  console.log(
-    `Secret source: ${app.stripeWebhookSecret.startsWith("enc:v1:") ? "decrypted from DB" : "plain-text from DB"}`,
-  );
-
-  if (!secret.startsWith("whsec_")) {
-    console.error(
-      `Decrypted value does not look like a Stripe webhook secret (expected whsec_... prefix).\n` +
-        `This usually means FIELD_ENCRYPTION_KEY does not match the key used to encrypt the DB record.`,
-    );
-    process.exit(1);
-  }
-  const endpoint = `${billingAppUrl}/api/billing/webhook`;
-
-  // Build a minimal Stripe-shaped ping event
   const timestamp = Math.floor(Date.now() / 1000);
   const payload = JSON.stringify({
-    id: "evt_sanity_check_ci",
+    id: `evt_sanity_check_${appId}`,
     object: "event",
     type: "ping",
     livemode: false,
@@ -70,7 +40,6 @@ async function main() {
     data: { object: {} },
   });
 
-  // Stripe's signature scheme: HMAC-SHA256 over "<timestamp>.<payload>"
   const signedPayload = `${timestamp}.${payload}`;
   const signature = crypto
     .createHmac("sha256", secret)
@@ -79,7 +48,7 @@ async function main() {
 
   const stripeSignature = `t=${timestamp},v1=${signature}`;
 
-  console.log(`→ POST ${endpoint}`);
+  console.log(`  → POST ${endpoint}`);
 
   const parsed = new URL(endpoint);
   const transport = parsed.protocol === "https:" ? https : http;
@@ -101,30 +70,81 @@ async function main() {
         let body = "";
         res.on("data", (chunk) => (body += chunk));
         res.on("end", () => {
-          console.log(`← Status: ${res.statusCode}`);
-          console.log(`← Body:   ${body}`);
-
+          console.log(`  ← Status: ${res.statusCode}`);
           if (res.statusCode !== 200) {
-            console.error(
-              `\nWebhook sanity check FAILED — expected 200, got ${res.statusCode}`,
-            );
-            console.error(
-              "The service rejected the signature. Check that the stripeWebhookSecret " +
-                "stored for this app in the DB matches the secret configured in Stripe.",
-            );
-            reject(new Error(`Unexpected status ${res.statusCode}`));
+            console.error(`  ← Body:   ${body}`);
+            reject(new Error(`Expected 200, got ${res.statusCode}`));
           } else {
-            console.log("\nWebhook sanity check PASSED ✓");
             resolve();
           }
         });
       },
     );
-
     req.on("error", reject);
     req.write(payload);
     req.end();
   });
+}
+
+async function main() {
+  const billingAppUrl = process.env.BILLING_APP_URL;
+
+  if (!billingAppUrl) {
+    console.error("Error: BILLING_APP_URL is not set");
+    process.exit(1);
+  }
+
+  const apps = await prisma.app.findMany({
+    where: { stripeWebhookSecret: { not: null } },
+    select: { id: true, stripeWebhookSecret: true },
+  });
+
+  if (apps.length === 0) {
+    console.warn(
+      "No apps with a stripeWebhookSecret found — skipping sanity check.",
+    );
+    process.exit(0);
+  }
+
+  console.log(`Checking ${apps.length} app(s)...\n`);
+
+  const failures: string[] = [];
+
+  for (const app of apps) {
+    console.log(`[${app.id}]`);
+    const raw = app.stripeWebhookSecret!;
+    const secret = decrypt(raw);
+    console.log(
+      `  Source: ${raw.startsWith("enc:v1:") ? "decrypted from DB" : "plain-text from DB"}`,
+    );
+
+    if (!secret.startsWith("whsec_")) {
+      console.error(
+        `  SKIP: Decrypted value does not look like a Stripe webhook secret.\n` +
+          `  This usually means FIELD_ENCRYPTION_KEY does not match the key used to encrypt the DB record.`,
+      );
+      failures.push(app.id);
+      continue;
+    }
+
+    try {
+      await pingApp(billingAppUrl, app.id, secret);
+      console.log(`  PASSED ✓\n`);
+    } catch (err) {
+      console.error(
+        `  FAILED: ${err instanceof Error ? err.message : err}\n` +
+          `  Check that the stripeWebhookSecret in the DB matches the secret configured in Stripe.\n`,
+      );
+      failures.push(app.id);
+    }
+  }
+
+  if (failures.length > 0) {
+    console.error(`\n${failures.length} app(s) failed: ${failures.join(", ")}`);
+    process.exit(1);
+  }
+
+  console.log(`All ${apps.length} app(s) passed ✓`);
 }
 
 main()
