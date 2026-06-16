@@ -190,7 +190,7 @@ jobs:
     - name: Schema sanity check
       env:
         DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
-        SAAS_JWT_SECRET: ${{ secrets.STAGE_SAAS_JWT_SECRET }}
+        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
         BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
       run: |
         ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
@@ -204,7 +204,7 @@ jobs:
     - name: Stripe webhook signature sanity check
       env:
         DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
-        SAAS_JWT_SECRET: ${{ secrets.STAGE_SAAS_JWT_SECRET }}
+        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
         BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
         STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
       run: npx tsx scripts/webhook-sanity-check.ts
