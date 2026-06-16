@@ -209,4 +209,5 @@ jobs:
         DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
         SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
         BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
+        FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
       run: npx tsx scripts/webhook-sanity-check.ts

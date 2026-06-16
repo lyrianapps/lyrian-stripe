@@ -20,6 +20,7 @@ import https from "https";
 import http from "http";
 import { URL } from "url";
 import { prisma } from "../lib/prisma";
+import { decrypt } from "../lib/crypto";
 
 async function main() {
   const billingAppUrl = process.env.BILLING_APP_URL;
@@ -43,7 +44,7 @@ async function main() {
     process.exit(0);
   }
 
-  const secret = app.stripeWebhookSecret;
+  const secret = decrypt(app.stripeWebhookSecret);
   console.log(`Using webhook secret from app ${app.id}`);
   const endpoint = `${billingAppUrl}/api/billing/webhook`;
 
