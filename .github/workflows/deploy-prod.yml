@@ -155,3 +155,56 @@ jobs:
           sleep 2
         done
         npx prisma migrate deploy
+
+  webhook-sanity-check:
+    runs-on: ubuntu-latest
+    needs: migrate
+    environment: prod
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: "yarn"
+
+    - name: Install dependencies
+      run: yarn install --frozen-lockfile
+
+    - name: Generate Prisma Client
+      run: npx prisma generate
+
+    - name: Google Auth
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Install Cloud SQL Auth Proxy
+      run: |
+        curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.3/cloud-sql-proxy.linux.amd64
+        chmod +x cloud-sql-proxy
+
+    - name: Schema sanity check
+      env:
+        DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
+        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
+        BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
+      run: |
+        ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
+        for i in $(seq 1 15); do
+          nc -z localhost 5432 && break
+          echo "Waiting for Cloud SQL proxy... ($i/15)"
+          sleep 2
+        done
+        npx tsx scripts/schema-sanity-check.ts
+
+    - name: Stripe webhook signature sanity check
+      env:
+        DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
+        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
+        BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
+        FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
+      run: npx tsx scripts/webhook-sanity-check.ts
