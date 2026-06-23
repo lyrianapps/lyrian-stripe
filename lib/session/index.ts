@@ -76,12 +76,21 @@ export async function createSession(payload: {
 
 export function verifyJWT(token: string): JwtPayload {
   JWTTokenSchema.parse(token);
+
   try {
     const payload = jwt.verify(token, JWT_SECRET);
+
     JWTPayloadSchema.parse(payload);
+
     return payload as JwtPayload;
   } catch (err) {
-    throw new Error("Invalid or expired JWT");
+    console.error("JWT verify error", {
+      name: err instanceof Error ? err.name : undefined,
+      message: err instanceof Error ? err.message : String(err),
+      secretLength: JWT_SECRET?.length,
+    });
+
+    throw err;
   }
 }
 
