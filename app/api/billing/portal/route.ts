@@ -36,7 +36,19 @@ export async function GET(req: NextRequest) {
     }
 
     // ✅ Verify token (JWT from SaaS)
-    const payload = verifyJWT(token);
+    let payload;
+
+    try {
+      payload = verifyJWT(token);
+    } catch (err) {
+      log.error({ err }, "billing/portal GET");
+      console.error("JWT verification failed", {
+        message: err instanceof Error ? err.message : String(err),
+        tokenPrefix: token?.slice(0, 20),
+      });
+
+      return NextResponse.redirect(`${origin}/unauthorized`);
+    }
 
     // ✅ Create server-side session
     const sessionToken = await createSession({
