@@ -102,11 +102,18 @@ const checkoutHandler = withApiKey(async (req: NextRequest) => {
     );
   }
 
+  const user = await prisma.billingCustomer.findUnique({
+    where: { appId_externalUserId: { appId, externalUserId } },
+    select: { email: true },
+  });
+
+  const resolvedEmail = email ?? user?.email ?? undefined;
+
   // Find or create BillingCustomer
   const customer = await findOrCreateBillingCustomer(
     appId,
     externalUserId,
-    email,
+    resolvedEmail,
   );
 
   // Create Stripe Checkout Session
