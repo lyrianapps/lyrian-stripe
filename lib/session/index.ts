@@ -16,6 +16,7 @@ const JWT_SECRET = env.SAAS_JWT_SECRET;
 export async function createSession(payload: {
   appId: string;
   externalUserId: string;
+  email?: string;
 }) {
   try {
     // Validate payload
@@ -43,6 +44,7 @@ export async function createSession(payload: {
         customer = await prisma.billingCustomer.create({
           data: {
             appId: payload.appId,
+            email: payload.email,
             externalUserId: payload.externalUserId,
             stripeCustomerId: "placeholder_" + randomBytes(8).toString("hex"), // placeholder
           },
@@ -63,6 +65,7 @@ export async function createSession(payload: {
         appId: payload.appId,
         externalUserId: payload.externalUserId,
         expiresAt,
+        email: payload.email,
         billingCustomer: { connect: { id: customer.id } }, // ✅ connect to real customer
       },
     });
@@ -99,6 +102,7 @@ export async function getSession(sessionId: string): Promise<{
   appId: string;
   externalUserId: string;
   billingCustomerId: string;
+  email: string;
 } | null> {
   try {
     // Validate format if you want (optional)
@@ -132,6 +136,7 @@ export async function getSession(sessionId: string): Promise<{
       appId: session.appId,
       externalUserId: session.externalUserId,
       billingCustomerId: session.billingCustomerId,
+      email: session.billingCustomer.email || "",
     };
 
     // Optional schema validation

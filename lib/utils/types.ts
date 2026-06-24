@@ -21,6 +21,7 @@ export type SubscriptionPlansProps = {
   currentPriceId?: string | null;
   appId: string;
   externalUserId: string;
+  email?: string;
   currentPeriodStart?: Date | string | null;
   currentPeriodEnd?: Date | string | null;
   cancelAtPeriodEnd?: boolean;

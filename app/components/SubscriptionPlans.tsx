@@ -170,6 +170,7 @@ export default function SubscriptionPlans({
   currentPlan,
   currentPriceId,
   appId,
+  email,
   externalUserId,
   currentPeriodStart,
   currentPeriodEnd,
@@ -194,6 +195,7 @@ export default function SubscriptionPlans({
         credentials: "include",
         body: JSON.stringify({
           appId,
+          email,
           externalUserId,
           priceId,
           returnUrl,

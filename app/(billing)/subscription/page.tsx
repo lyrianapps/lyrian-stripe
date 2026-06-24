@@ -115,6 +115,7 @@ export default async function SubscriptionPage({
         plans={filteredPlans}
         checkoutSuccess={checkoutSuccess}
         billingType={billingType}
+        email={session.email}
       />
     </div>
   );
