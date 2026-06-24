@@ -50,10 +50,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${origin}/unauthorized`);
     }
 
+    console.log("payload.email", payload.email);
     // ✅ Create server-side session
     const sessionToken = await createSession({
       appId: payload.iss as string,
       externalUserId: payload.sub as string,
+      email: payload.email as string,
     });
 
     // ✅ Default redirect
