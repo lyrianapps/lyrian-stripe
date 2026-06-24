@@ -152,10 +152,11 @@ model BillingCustomer {
 }
 
 model BillingSession {
-  id                String @id @default(cuid())
+  id                String  @id @default(cuid())
   billingCustomerId String
   appId             String
   externalUserId    String
+  email             String?
 
   createdAt DateTime  @default(now())
   expiresAt DateTime
