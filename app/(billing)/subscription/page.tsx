@@ -31,6 +31,8 @@ export default async function SubscriptionPage({
   if (!sessionToken) redirect("/unauthorized");
 
   const session = await getSession(sessionToken);
+
+  console.log("session", session);
   if (!session) redirect("/unauthorized");
 
   // ── Search params ─────────────────────────────────────────────────────────
