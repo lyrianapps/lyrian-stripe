@@ -182,6 +182,9 @@ async function main() {
   const stripeWebhookSecret = process.env.APP_STRIPE_WEBHOOK_SECRET
     ? encrypt(process.env.APP_STRIPE_WEBHOOK_SECRET)
     : undefined;
+  const jwtSecret = process.env.APP_SAAS_JWT_SECRET
+    ? encrypt(process.env.APP_SAAS_JWT_SECRET)
+    : undefined;
   try {
     const rawJson = JSON.parse(readFileSync(plansFile, "utf-8"));
     const parsed = AppConfigSchema.safeParse(rawJson);
@@ -233,6 +236,7 @@ async function main() {
         stripeSecretKey,
         stripePublishableKey,
         stripeWebhookSecret,
+        jwtSecret,
       },
       create: {
         id: appId,
@@ -243,6 +247,7 @@ async function main() {
         stripeSecretKey,
         stripePublishableKey,
         stripeWebhookSecret,
+        jwtSecret,
       },
     });
 

@@ -43,6 +43,10 @@ on:
         description: 'Stripe webhook signing secret for this app (whsec_...). Leave blank to use the billing portal default.'
         required: false
         type: string
+      saas_jwt_secret:
+        description: 'JWT signing secret used by this SaaS app to sign billing tokens. Leave blank to use the global SAAS_JWT_SECRET.'
+        required: false
+        type: string
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -87,6 +91,7 @@ jobs:
         APP_STRIPE_SECRET_KEY: ${{ inputs.stripe_secret_key }}
         APP_STRIPE_PK_KEY: ${{ inputs.stripe_publishable_key }}
         APP_STRIPE_WEBHOOK_SECRET: ${{ inputs.stripe_webhook_secret }}
+        APP_SAAS_JWT_SECRET: ${{ inputs.saas_jwt_secret }}
       run: |
         # Mask sensitive values immediately so they never appear in plain text in the logs
         if [ -n "$APP_RESEND_API_KEY" ]; then
@@ -100,6 +105,9 @@ jobs:
         fi
         if [ -n "$APP_STRIPE_WEBHOOK_SECRET" ]; then
           echo "::add-mask::$APP_STRIPE_WEBHOOK_SECRET"
+        fi
+        if [ -n "$APP_SAAS_JWT_SECRET" ]; then
+          echo "::add-mask::$APP_SAAS_JWT_SECRET"
         fi
 
         ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &

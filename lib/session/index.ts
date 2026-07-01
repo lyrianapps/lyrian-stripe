@@ -8,10 +8,27 @@ import {
 } from "./schemas";
 import { logger } from "@/app/middleware/logger";
 import { env } from "@/env";
+import { decrypt } from "@/lib/crypto";
 
 const log = logger.child({ module: "session" });
 
-const JWT_SECRET = env.SAAS_JWT_SECRET;
+/**
+ * Resolves the JWT signing secret for a given app.
+ * Uses the per-app jwtSecret from the DB when available, falls back to the
+ * global SAAS_JWT_SECRET env var for apps that haven't set one.
+ */
+async function getJwtSecretForApp(appId: string): Promise<string> {
+  const app = await prisma.app.findUnique({
+    where: { id: appId },
+    select: { jwtSecret: true },
+  });
+  const perApp = app?.jwtSecret ? decrypt(app.jwtSecret) : null;
+  const secret = perApp ?? env.SAAS_JWT_SECRET;
+  if (!secret) {
+    throw new Error(`No JWT secret configured for app ${appId}`);
+  }
+  return secret;
+}
 
 export async function createSession(payload: {
   appId: string;
@@ -77,22 +94,28 @@ export async function createSession(payload: {
   }
 }
 
-export function verifyJWT(token: string): JwtPayload {
+export async function verifyJWT(token: string): Promise<JwtPayload> {
   JWTTokenSchema.parse(token);
 
+  // Decode without verifying first to extract `iss` (the app ID), so we can
+  // look up the correct per-app secret before running full verification.
+  const unverified = jwt.decode(token) as JwtPayload | null;
+  if (!unverified?.iss) {
+    throw new Error("JWT missing iss claim");
+  }
+
+  const secret = await getJwtSecretForApp(unverified.iss);
+
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
-
+    const payload = jwt.verify(token, secret);
     JWTPayloadSchema.parse(payload);
-
     return payload as JwtPayload;
   } catch (err) {
     console.error("JWT verify error", {
       name: err instanceof Error ? err.name : undefined,
       message: err instanceof Error ? err.message : String(err),
-      secretLength: JWT_SECRET?.length,
+      appId: unverified.iss,
     });
-
     throw err;
   }
 }

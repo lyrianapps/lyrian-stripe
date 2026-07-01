@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     let payload;
 
     try {
-      payload = verifyJWT(token);
+      payload = await verifyJWT(token);
     } catch (err) {
       log.error({ err }, "billing/portal GET");
       console.error("JWT verification failed", {

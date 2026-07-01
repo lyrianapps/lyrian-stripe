@@ -61,6 +61,11 @@ model App {
   stripePublishableKey String? // pk_live_... or pk_test_...
   stripeWebhookSecret  String? // whsec_...
 
+  // Per-app JWT signing secret — the SaaS app signs tokens with this key and
+  // the billing service verifies them. Falls back to the global SAAS_JWT_SECRET
+  // env var for apps that haven't set one yet.
+  jwtSecret String?
+
   // Cached Stripe Customer Portal configuration ID.
   // This config disables the "cancel subscription" button in the portal so
   // users must cancel through our own delete-account flow instead of bypassing it.
