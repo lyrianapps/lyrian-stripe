@@ -100,6 +100,65 @@ x-api-key: <your-api-key>
 
 Plans can be updated at any time by re-running `register-app.yml` with a new plans file. Plans not present in the new file are deactivated automatically.
 
+## Custom domains (optional)
+
+By default your app's portal is served from the Cloud Run URL (e.g. `https://lyrian-stripe-prod-xxx.run.app/api/billing/portal`). For a branded, per-tenant billing URL like `https://billing.yoursaas.com`, opt in during registration.
+
+**1. Pass `custom_domain` when registering the app**
+
+In `register-app.yml`, supply the fully-qualified hostname you want to serve billing from:
+
+```
+custom_domain: billing.yoursaas.com
+```
+
+The workflow persists it to `App.customDomain` (unique per app) and runs:
+
+```bash
+gcloud run domain-mappings create \
+  --service lyrian-stripe-prod \
+  --domain billing.yoursaas.com \
+  --region <region>
+```
+
+It then prints the DNS records Google Cloud Run expects.
+
+**2. Add the DNS record at your registrar**
+
+For a subdomain, add a `CNAME` at your DNS provider (Namecheap, Cloudflare DNS-only, Route 53, etc.):
+
+```
+billing.yoursaas.com  CNAME  ghs.googlehosted.com.
+```
+
+For an apex domain, use the `A`/`AAAA` records printed by the `domain-mappings describe` step.
+
+Google Cloud Run auto-provisions a managed TLS certificate once DNS propagates (usually within minutes; can take up to 24h for apex domains).
+
+**3. Verify**
+
+```bash
+curl -I https://billing.yoursaas.com/api/billing/portal
+# HTTP/2 400  ← reached the app (missing token is expected)
+```
+
+**4. Point your SaaS at the branded URL**
+
+Set `BILLING_APP_URL=https://billing.yoursaas.com` in your SaaS env. Everything else works unchanged.
+
+### How request routing works
+
+- **Edge middleware** (`middleware.ts`) reads the incoming `Host` header and forwards it as `x-request-hostname` to downstream handlers. It runs on the Edge runtime and does **no** DB access.
+- **Portal route** (`/api/billing/portal`) resolves the hostname to an app via `App.customDomain` lookup. If a match is found, it enforces that the JWT's `iss` claim matches that app's ID — preventing a JWT signed for App A from being redeemed on App B's branded domain.
+- **Raw Cloud Run URLs** (`*.run.app`) and `localhost` bypass domain resolution entirely and rely solely on `iss` for app selection. Existing tenants without a custom domain keep working.
+- **All other API routes** (`/api/subscription/*`, `/api/billing/checkout`, `/api/usage/*`, webhooks) are keyed by API key or Stripe signature and are unaffected by the domain.
+
+### Security notes
+
+- `App.customDomain` is `@unique` — the same hostname cannot be claimed by two tenants.
+- The JWT `iss` → host binding is enforced server-side; a stolen token from a shared user session cannot be replayed against another tenant's branded portal.
+- The Cloud Run domain-mapping process verifies domain ownership via DNS — the workflow will fail loudly if the requesting GCP project does not own the domain.
+
 ## API reference
 
 | Endpoint                      | Method | Auth             | Description                       |
