@@ -7,7 +7,6 @@ import { logger } from "@/app/middleware/logger";
 import { z } from "zod";
 
 const ReportUsageSchema = z.object({
-  appId: z.string().min(1),
   externalUserId: z.string().min(1),
   quantity: z.number().int().positive().default(1),
   /**
@@ -19,7 +18,7 @@ const ReportUsageSchema = z.object({
 });
 
 const log = logger.child({ route: "POST /api/usage/report" });
-const reportHandler = withApiKey(async (req: NextRequest) => {
+const reportHandler = withApiKey(async (req: NextRequest, { appId }) => {
   let body: unknown;
   try {
     body = await req.json();
@@ -37,7 +36,7 @@ const reportHandler = withApiKey(async (req: NextRequest) => {
     );
   }
 
-  const { appId, externalUserId, quantity, idempotencyKey } = parsed.data;
+  const { externalUserId, quantity, idempotencyKey } = parsed.data;
   const result = await reportUsage({
     appId,
     externalUserId,

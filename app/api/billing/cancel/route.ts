@@ -11,7 +11,6 @@ import { sendSubscriptionEmail } from "@/lib/email";
 const log = logger.child({ route: "POST /api/billing/cancel" });
 
 const CancelRequestSchema = z.object({
-  appId: z.string().min(1),
   externalUserId: z.string().min(1),
   cancelImmediately: z.boolean().optional().default(false),
 });
@@ -55,7 +54,7 @@ async function cancelStripeSubscription(
  * By default, cancels at period end (user keeps access until billing period ends)
  * Set cancelImmediately: true to cancel right away
  */
-const cancelHandler = withApiKey(async (req: NextRequest) => {
+const cancelHandler = withApiKey(async (req: NextRequest, { appId }) => {
   let body: unknown;
 
   try {
@@ -72,7 +71,7 @@ const cancelHandler = withApiKey(async (req: NextRequest) => {
     );
   }
 
-  const { appId, externalUserId, cancelImmediately } = parsed.data;
+  const { externalUserId, cancelImmediately } = parsed.data;
 
   try {
     // Find the billing customer (include app for email credentials)

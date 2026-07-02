@@ -66,6 +66,11 @@ model App {
   // env var for apps that haven't set one yet.
   jwtSecret String?
 
+  // Custom domain for this app's billing portal (e.g. billing.saas-a.com).
+  // The SaaS app points this domain to the billing service via CNAME.
+  // Used to scope all browser-facing routes to a single tenant.
+  customDomain String? @unique
+
   // Cached Stripe Customer Portal configuration ID.
   // This config disables the "cancel subscription" button in the portal so
   // users must cancel through our own delete-account flow instead of bypassing it.

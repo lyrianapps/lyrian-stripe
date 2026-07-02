@@ -47,6 +47,10 @@ on:
         description: 'JWT signing secret used by this SaaS app to sign billing tokens. Leave blank to use the global SAAS_JWT_SECRET.'
         required: false
         type: string
+      custom_domain:
+        description: 'Custom domain for this app\'s billing portal (e.g. billing.saas-a.com). Leave blank to use the shared billing service URL.'
+        required: false
+        type: string
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -92,6 +96,7 @@ jobs:
         APP_STRIPE_PK_KEY: ${{ inputs.stripe_publishable_key }}
         APP_STRIPE_WEBHOOK_SECRET: ${{ inputs.stripe_webhook_secret }}
         APP_SAAS_JWT_SECRET: ${{ inputs.saas_jwt_secret }}
+        APP_CUSTOM_DOMAIN: ${{ inputs.custom_domain }}
       run: |
         # Mask sensitive values immediately so they never appear in plain text in the logs
         if [ -n "$APP_RESEND_API_KEY" ]; then
@@ -144,3 +149,41 @@ jobs:
         echo ""
         echo "⚠️  IMPORTANT: Copy the API key from the output above!"
         echo "⚠️  It will NOT be shown again!"
+
+    - name: Set up Cloud SDK
+      if: ${{ inputs.custom_domain != '' }}
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Map custom domain to Cloud Run service
+      if: ${{ inputs.custom_domain != '' }}
+      run: |
+        # Derive the Cloud Run service name from the target environment
+        case "${{ inputs.environment }}" in
+          development) SERVICE="lyrian-stripe" ;;
+          stage)       SERVICE="lyrian-stripe-stage" ;;
+          prod)        SERVICE="lyrian-stripe-prod" ;;
+        esac
+
+        echo "🌐 Mapping ${{ inputs.custom_domain }} → Cloud Run service: $SERVICE"
+
+        # Create the domain mapping (idempotent — safe to re-run)
+        gcloud run domain-mappings create \
+          --service "$SERVICE" \
+          --domain "${{ inputs.custom_domain }}" \
+          --region us-central1 \
+          --project ${{ secrets.GCP_PROJECT_ID }} \
+          --quiet || true
+
+        echo ""
+        echo "📋 DNS records to configure for ${{ inputs.custom_domain }}:"
+        gcloud run domain-mappings describe \
+          --domain "${{ inputs.custom_domain }}" \
+          --region us-central1 \
+          --project ${{ secrets.GCP_PROJECT_ID }} \
+          --format="table(resourceRecords.type,resourceRecords.name,resourceRecords.rrdata)" 2>/dev/null || \
+        echo "   (DNS records will appear once the mapping is provisioned — may take a minute)"
+        echo ""
+        echo "   Point the above DNS record(s) at your domain registrar, then TLS will be"
+        echo "   provisioned automatically by Cloud Run (may take up to 15 minutes)."

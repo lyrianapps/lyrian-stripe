@@ -6,15 +6,14 @@ import { logger } from "@/app/middleware/logger";
 import { getCurrentUsage } from "@/lib/services/usageService";
 
 const log = logger.child({ route: "GET /api/usage/current" });
-const currentHandler = withApiKey(async (req: NextRequest) => {
-  const appId = req.nextUrl.searchParams.get("appId");
+const currentHandler = withApiKey(async (req: NextRequest, { appId }) => {
   const externalUserId = req.nextUrl.searchParams.get("externalUserId");
   const yearMonth = req.nextUrl.searchParams.get("yearMonth") ?? undefined;
 
-  if (!appId || !externalUserId) {
-    log.warn("Missing appId or externalUserId");
+  if (!externalUserId) {
+    log.warn("Missing externalUserId");
     return NextResponse.json(
-      { error: "appId and externalUserId are required" },
+      { error: "externalUserId is required" },
       { status: 400 },
     );
   }

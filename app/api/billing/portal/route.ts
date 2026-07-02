@@ -50,6 +50,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${origin}/unauthorized`);
     }
 
+    // ✅ When accessed via a custom domain, verify the JWT iss matches the
+    // domain-derived appId — prevents cross-tenant token reuse.
+    const hostAppId = req.headers.get("x-billing-app-id");
+    if (hostAppId && payload.iss !== hostAppId) {
+      log.warn(
+        { iss: payload.iss, hostAppId },
+        "billing/portal: JWT iss does not match host-derived appId",
+      );
+      return NextResponse.redirect(`${origin}/unauthorized`);
+    }
+
     // ✅ Create server-side session
     const sessionToken = await createSession({
       appId: payload.iss as string,

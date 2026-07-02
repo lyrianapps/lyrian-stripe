@@ -13,14 +13,13 @@ import { withRateLimit } from "@/lib/middleware/rateLimit";
  * - Success: { payments: [...], hasFailedPayments: boolean }
  * - No customer: { payments: [], hasFailedPayments: false }
  */
-const paymentsHandler = withApiKey(async (request: NextRequest) => {
-  const appId = request.nextUrl.searchParams.get("appId");
+const paymentsHandler = withApiKey(async (request: NextRequest, { appId }) => {
   const externalUserId = request.nextUrl.searchParams.get("externalUserId");
   const limitParam = request.nextUrl.searchParams.get("limit");
 
-  if (!appId || !externalUserId) {
+  if (!externalUserId) {
     return NextResponse.json(
-      { error: "appId and externalUserId required" },
+      { error: "externalUserId required" },
       { status: 400 },
     );
   }

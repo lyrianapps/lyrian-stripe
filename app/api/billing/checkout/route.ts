@@ -75,7 +75,7 @@ function errorResponse(message: string, status = 500, details?: unknown) {
   return NextResponse.json(payload, { status });
 }
 
-const checkoutHandler = withApiKey(async (req: NextRequest) => {
+const checkoutHandler = withApiKey(async (req: NextRequest, { appId }) => {
   let body: unknown;
 
   try {
@@ -89,7 +89,7 @@ const checkoutHandler = withApiKey(async (req: NextRequest) => {
     return errorResponse("Invalid request body", 400, parsed.error.flatten());
   }
 
-  const { appId, externalUserId, priceId, email, returnUrl } = parsed.data;
+  const { externalUserId, priceId, email, returnUrl } = parsed.data;
 
   await upsertApp(appId);
 

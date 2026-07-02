@@ -185,6 +185,7 @@ async function main() {
   const jwtSecret = process.env.APP_SAAS_JWT_SECRET
     ? encrypt(process.env.APP_SAAS_JWT_SECRET)
     : undefined;
+  const customDomain = process.env.APP_CUSTOM_DOMAIN || undefined;
   try {
     const rawJson = JSON.parse(readFileSync(plansFile, "utf-8"));
     const parsed = AppConfigSchema.safeParse(rawJson);
@@ -237,6 +238,7 @@ async function main() {
         stripePublishableKey,
         stripeWebhookSecret,
         jwtSecret,
+        customDomain,
       },
       create: {
         id: appId,
@@ -248,6 +250,7 @@ async function main() {
         stripePublishableKey,
         stripeWebhookSecret,
         jwtSecret,
+        customDomain,
       },
     });
 

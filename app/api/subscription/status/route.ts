@@ -85,13 +85,12 @@ function buildActiveResponse(subscription: SubscriptionRow) {
 // Handler
 // =============================================================================
 
-const statusHandler = withApiKey(async (request: NextRequest) => {
-  const appId = request.nextUrl.searchParams.get("appId");
+const statusHandler = withApiKey(async (request: NextRequest, { appId }) => {
   const externalUserId = request.nextUrl.searchParams.get("externalUserId");
 
-  if (!appId || !externalUserId) {
+  if (!externalUserId) {
     return NextResponse.json(
-      { error: "appId and externalUserId required" },
+      { error: "externalUserId required" },
       { status: 400 },
     );
   }

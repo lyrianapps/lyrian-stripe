@@ -34,7 +34,6 @@ export const SubscriptionResponseSchema = z.object({
 
 // Checkout now accepts priceId directly from the SaaS app's configured plans
 export const CheckoutRequestSchema = z.object({
-  appId: z.string().min(1),
   externalUserId: z.string().min(1),
   // The Stripe price ID from the app's configured plans
   priceId: z.string().startsWith("price_"),
