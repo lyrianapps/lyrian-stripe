@@ -48,7 +48,7 @@ on:
         required: false
         type: string
       custom_domain:
-        description: 'Custom domain for this app\'s billing portal (e.g. billing.saas-a.com). Leave blank to use the shared billing service URL.'
+        description: 'Custom domain for this app''s billing portal (e.g. billing.saas-a.com). Leave blank to use the shared billing service URL.'
         required: false
         type: string
 
