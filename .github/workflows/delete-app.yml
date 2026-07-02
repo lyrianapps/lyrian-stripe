@@ -85,7 +85,6 @@ jobs:
     - name: Run delete-app script
       env:
         DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
-        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
       run: |
         ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
         sleep 5

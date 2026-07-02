@@ -4,8 +4,10 @@ const envSchema = z.object({
   // Database
   DATABASE_URL: z.string().url(),
 
-  // Auth
-  SAAS_JWT_SECRET: z.string().min(1),
+  // Auth — optional fallback for legacy apps that don't have a per-app jwtSecret
+  // stored in the DB, and for dev tooling (mock-login, create-portal). New apps
+  // should provide their own JWT secret via register-app.yml.
+  SAAS_JWT_SECRET: z.string().min(1).optional(),
 
   // App URL
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),

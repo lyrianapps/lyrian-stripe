@@ -89,7 +89,6 @@ jobs:
     - name: Register App with Plans
       env:
         DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
-        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
         APP_RESEND_API_KEY: ${{ inputs.resend_api_key }}
         APP_FROM_EMAIL: ${{ inputs.from_email }}
         APP_STRIPE_SECRET_KEY: ${{ inputs.stripe_secret_key }}

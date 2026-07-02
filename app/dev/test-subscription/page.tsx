@@ -6,7 +6,10 @@ import { env } from "@/env";
 export default async function TestSubscriptionPage() {
   // server-side check for admin cookie to avoid client flash
   const cookieStore = await cookies();
-  const devAdmin = cookieStore.get("dev_admin")?.value === env.SAAS_JWT_SECRET;
+  const cookieValue = cookieStore.get("dev_admin")?.value;
+  const devAdmin = Boolean(
+    env.SAAS_JWT_SECRET && cookieValue === env.SAAS_JWT_SECRET,
+  );
 
   // If not in dev mode, render not found
   if (process.env.NODE_ENV === "production") {

@@ -274,15 +274,15 @@ await fetch(`${process.env.BILLING_APP_URL}/api/usage/report`, {
 
 ## Environment variables
 
-| Variable                | Required | Description                                           |
-| ----------------------- | -------- | ----------------------------------------------------- |
-| `DATABASE_URL`          | ✅       | PostgreSQL connection string                          |
-| `SAAS_JWT_SECRET`       | ✅       | Shared secret for JWT signing                         |
-| `CRON_SECRET`           | ✅       | Secret for cron job requests                          |
-| `FIELD_ENCRYPTION_KEY`  | ✅       | 64-hex-char key for AES-256-GCM credential encryption |
-| `STRIPE_SECRET_KEY`     | Optional | Global fallback if app has no per-app key             |
-| `STRIPE_WEBHOOK_SECRET` | Optional | Global fallback webhook secret                        |
-| `RESEND_API_KEY`        | Optional | Global fallback email key                             |
+| Variable                | Required | Description                                                                                                                            |
+| ----------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`          | ✅       | PostgreSQL connection string                                                                                                           |
+| `CRON_SECRET`           | ✅       | Secret for cron job requests                                                                                                           |
+| `FIELD_ENCRYPTION_KEY`  | ✅       | 64-hex-char key for AES-256-GCM credential encryption                                                                                  |
+| `SAAS_JWT_SECRET`       | Optional | Fallback JWT secret for legacy apps without a per-app `jwtSecret` in the DB, and for local dev tooling (`mock-login`, `create-portal`) |
+| `STRIPE_SECRET_KEY`     | Optional | Global fallback if app has no per-app key                                                                                              |
+| `STRIPE_WEBHOOK_SECRET` | Optional | Global fallback webhook secret                                                                                                         |
+| `RESEND_API_KEY`        | Optional | Global fallback email key                                                                                                              |
 
 ## Stripe test cards
 

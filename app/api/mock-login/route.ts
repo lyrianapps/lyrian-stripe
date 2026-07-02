@@ -5,12 +5,18 @@ import { env } from "@/env";
 
 const log = logger.child({ route: "GET /api/mock-login" });
 
-const JWT_SECRET = env.SAAS_JWT_SECRET;
-
 export async function GET(request: Request) {
   // Disable in production
   if (process.env.NODE_ENV === "production") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const JWT_SECRET = env.SAAS_JWT_SECRET;
+  if (!JWT_SECRET) {
+    return NextResponse.json(
+      { error: "SAAS_JWT_SECRET is not set — required for mock-login" },
+      { status: 500 },
+    );
   }
 
   try {
