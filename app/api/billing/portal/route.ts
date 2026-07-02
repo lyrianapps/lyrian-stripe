@@ -3,8 +3,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSession, verifyJWT } from "@/lib/session";
 import { checkRateLimit } from "@/lib/middleware/rateLimit";
 import { getPortalIdentifier } from "@/lib/rateLimit";
+import { prisma } from "@/lib/prisma";
 
 const log = logger.child({ route: "GET /api/billing/portal" });
+
+/**
+ * When the request arrives via a custom domain (billing.saas-a.com), resolve
+ * the appId that owns that domain. Returns null for localhost / raw Cloud Run
+ * URLs, which are considered "un-scoped" and don't enforce cross-tenant checks.
+ */
+async function resolveAppFromHostname(
+  hostname: string | null,
+): Promise<string | null> {
+  if (!hostname) return null;
+  if (hostname === "localhost" || hostname.endsWith(".run.app")) return null;
+
+  const app = await prisma.app.findUnique({
+    where: { customDomain: hostname },
+    select: { id: true },
+  });
+
+  return app?.id ?? null;
+}
 
 export async function GET(req: NextRequest) {
   // ✅ Always use explicit base URL (Cloud Run safe)
@@ -52,10 +72,11 @@ export async function GET(req: NextRequest) {
 
     // ✅ When accessed via a custom domain, verify the JWT iss matches the
     // domain-derived appId — prevents cross-tenant token reuse.
-    const hostAppId = req.headers.get("x-billing-app-id");
+    const hostname = req.headers.get("x-request-hostname");
+    const hostAppId = await resolveAppFromHostname(hostname);
     if (hostAppId && payload.iss !== hostAppId) {
       log.warn(
-        { iss: payload.iss, hostAppId },
+        { iss: payload.iss, hostAppId, hostname },
         "billing/portal: JWT iss does not match host-derived appId",
       );
       return NextResponse.redirect(`${origin}/unauthorized`);
