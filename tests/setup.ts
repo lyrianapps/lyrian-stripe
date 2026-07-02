@@ -1,28 +1,36 @@
 import { beforeAll, afterAll, afterEach, vi } from "vitest";
 import { config } from "dotenv";
 
-// Load .env.test before anything else
+// Load .env.test before anything else. This MUST run before vi.mock() below,
+// but vi.mock() is hoisted to the very top of the file by Vitest — so we also
+// call dotenv at the top of the mock factory as a belt-and-braces measure.
 config({ path: ".env.test" });
 
-// Set TEST_DATABASE_URL before importing prisma
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
-if (!TEST_DATABASE_URL) {
-  throw new Error(
-    "TEST_DATABASE_URL is required. Set it in .env.test or as an environment variable.\n" +
-      "Example: TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/lyrian_billing_test",
-  );
-}
+// Mock the env module BEFORE any imports that use it.
+// The factory function runs at mock hoist time (before top-level dotenv above),
+// so we re-run dotenv inside the factory to guarantee TEST_DATABASE_URL is set.
+vi.mock("@/env", async () => {
+  const dotenv = await import("dotenv");
+  dotenv.config({ path: ".env.test" });
 
-// Mock the env module BEFORE any imports that use it
-vi.mock("@/env", () => ({
-  env: {
-    DATABASE_URL: process.env.TEST_DATABASE_URL,
-    SAAS_JWT_SECRET: "test-jwt-secret-for-testing",
-    NEXT_PUBLIC_APP_URL: "http://localhost:3000",
-    CRON_SECRET: "test-cron-secret",
-    BILLING_APP_URL: "http://localhost:3000",
-  },
-}));
+  const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+  if (!testDatabaseUrl) {
+    throw new Error(
+      "TEST_DATABASE_URL is required. Set it in .env.test or as an environment variable.\n" +
+        "Example: TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/lyrian_billing_test",
+    );
+  }
+
+  return {
+    env: {
+      DATABASE_URL: testDatabaseUrl,
+      SAAS_JWT_SECRET: "test-jwt-secret-for-testing",
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000",
+      CRON_SECRET: "test-cron-secret",
+      BILLING_APP_URL: "http://localhost:3000",
+    },
+  };
+});
 
 // Import prisma AFTER mocking env
 import { prisma } from "@/lib/prisma";
