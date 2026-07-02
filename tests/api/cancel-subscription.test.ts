@@ -48,7 +48,6 @@ describe("POST /api/billing/cancel", () => {
     const request = createPostRequest(
       "http://localhost:3000/api/billing/cancel",
       {
-        appId: testApp.id,
         externalUserId: testCustomer.externalUserId,
       },
       { "x-api-key": testApp.apiKey! },
@@ -75,7 +74,6 @@ describe("POST /api/billing/cancel", () => {
     const request = createPostRequest(
       "http://localhost:3000/api/billing/cancel",
       {
-        appId: testApp.id,
         externalUserId: testCustomer.externalUserId,
       },
       { "x-api-key": "invalid_key" },
@@ -92,7 +90,6 @@ describe("POST /api/billing/cancel", () => {
     const request = createPostRequest(
       "http://localhost:3000/api/billing/cancel",
       {
-        appId: testApp.id,
         externalUserId: testCustomer.externalUserId,
       },
       { "x-api-key": testApp.apiKey! },
@@ -115,7 +112,6 @@ describe("POST /api/billing/cancel", () => {
     const request = createPostRequest(
       "http://localhost:3000/api/billing/cancel",
       {
-        appId: testApp.id,
         externalUserId: testCustomer.externalUserId,
       },
       { "x-api-key": testApp.apiKey! },

@@ -32,7 +32,6 @@ describe("GET /api/subscription/status", () => {
     const request = createGetRequest(
       "http://localhost:3000/api/subscription/status",
       {
-        appId: testApp.id,
         externalUserId: testCustomer.externalUserId,
       },
       { "x-api-key": testApp.apiKey! },
@@ -52,7 +51,6 @@ describe("GET /api/subscription/status", () => {
     const request = createGetRequest(
       "http://localhost:3000/api/subscription/status",
       {
-        appId: testApp.id,
         externalUserId: testCustomer.externalUserId,
       },
       { "x-api-key": testApp.apiKey! },
@@ -72,7 +70,6 @@ describe("GET /api/subscription/status", () => {
     const request = createGetRequest(
       "http://localhost:3000/api/subscription/status",
       {
-        appId: testApp.id,
         externalUserId: testCustomer.externalUserId,
       },
       { "x-api-key": "invalid_key" },
@@ -95,7 +92,6 @@ describe("GET /api/subscription/status", () => {
     const request = createGetRequest(
       "http://localhost:3000/api/subscription/status",
       {
-        appId: testApp.id,
         externalUserId: testCustomer.externalUserId,
       },
       { "x-api-key": testApp.apiKey! },

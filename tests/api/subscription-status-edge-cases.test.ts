@@ -25,18 +25,17 @@ describe("GET /api/subscription/status - edge cases", () => {
     testCustomer = await createTestBillingCustomer(testApp.id);
   });
 
-  it("should return 400 when appId is missing", async () => {
+  it("should return 401 when API key is missing", async () => {
     const { GET } = await import("@/app/api/subscription/status/route");
 
     const request = createGetRequest(
       "http://localhost:3000/api/subscription/status",
       { externalUserId: testCustomer.externalUserId },
-      { "x-api-key": testApp.apiKey! },
     );
 
     const response = await GET(request);
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(401);
   });
 
   it("should return 400 when externalUserId is missing", async () => {
@@ -44,7 +43,7 @@ describe("GET /api/subscription/status - edge cases", () => {
 
     const request = createGetRequest(
       "http://localhost:3000/api/subscription/status",
-      { appId: testApp.id },
+      {},
       { "x-api-key": testApp.apiKey! },
     );
 
@@ -58,7 +57,7 @@ describe("GET /api/subscription/status - edge cases", () => {
 
     const request = createGetRequest(
       "http://localhost:3000/api/subscription/status",
-      { appId: testApp.id, externalUserId: "nonexistent-user" },
+      { externalUserId: "nonexistent-user" },
       { "x-api-key": testApp.apiKey! },
     );
 
@@ -84,7 +83,7 @@ describe("GET /api/subscription/status - edge cases", () => {
 
     const request = createGetRequest(
       "http://localhost:3000/api/subscription/status",
-      { appId: testApp.id, externalUserId: testCustomer.externalUserId },
+      { externalUserId: testCustomer.externalUserId },
       { "x-api-key": testApp.apiKey! },
     );
 
@@ -112,7 +111,7 @@ describe("GET /api/subscription/status - edge cases", () => {
 
     const request = createGetRequest(
       "http://localhost:3000/api/subscription/status",
-      { appId: testApp.id, externalUserId: testCustomer.externalUserId },
+      { externalUserId: testCustomer.externalUserId },
       { "x-api-key": testApp.apiKey! },
     );
 
@@ -134,7 +133,7 @@ describe("GET /api/subscription/status - edge cases", () => {
 
     const request = createGetRequest(
       "http://localhost:3000/api/subscription/status",
-      { appId: testApp.id, externalUserId: testCustomer.externalUserId },
+      { externalUserId: testCustomer.externalUserId },
       { "x-api-key": testApp.apiKey! },
     );
 
@@ -169,7 +168,7 @@ describe("GET /api/subscription/status - edge cases", () => {
 
     const request = createGetRequest(
       "http://localhost:3000/api/subscription/status",
-      { appId: testApp.id, externalUserId: testCustomer.externalUserId },
+      { externalUserId: testCustomer.externalUserId },
       { "x-api-key": testApp.apiKey! },
     );
 
@@ -193,7 +192,7 @@ describe("GET /api/subscription/status - edge cases", () => {
 
     const request = createGetRequest(
       "http://localhost:3000/api/subscription/status",
-      { appId: testApp.id, externalUserId: testCustomer.externalUserId },
+      { externalUserId: testCustomer.externalUserId },
       { "x-api-key": testApp.apiKey! },
     );
 
