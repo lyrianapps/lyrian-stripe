@@ -213,4 +213,4 @@ jobs:
         BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
         FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
         SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
-      run: npx tsx scripts/prod-smoke-check.ts
+      run: npx tsx scripts/post-deploy-smoke-check.ts
