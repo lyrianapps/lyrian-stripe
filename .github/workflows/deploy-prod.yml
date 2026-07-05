@@ -206,3 +206,11 @@ jobs:
         BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
         FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
       run: npx tsx scripts/webhook-sanity-check.ts
+
+    - name: Post-deploy smoke check (plans / JWT / status)
+      env:
+        DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
+        BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
+        FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
+        SAAS_JWT_SECRET: ${{ secrets.SAAS_JWT_SECRET }}
+      run: npx tsx scripts/prod-smoke-check.ts
