@@ -168,13 +168,12 @@ jobs:
 
         echo "🌐 Mapping ${{ inputs.custom_domain }} → Cloud Run service: $SERVICE"
 
-        # Ensure the beta component is available and never prompts.
-        gcloud config set disable_prompts true
+        # gcloud domain-mappings lives in the beta component. The GitHub-hosted
+        # runner's pre-installed gcloud doesn't include it, so install it here.
+        # --quiet auto-accepts the confirmation prompt.
+        gcloud components install beta --quiet
 
         # Create the domain mapping (idempotent — safe to re-run).
-        # Use `gcloud beta run domain-mappings` — the GA command in current
-        # gcloud versions dropped the --region flag, but the beta form still
-        # accepts it and works identically.
         gcloud beta run domain-mappings create \
           --service "$SERVICE" \
           --domain "${{ inputs.custom_domain }}" \
