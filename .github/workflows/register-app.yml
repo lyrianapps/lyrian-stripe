@@ -154,6 +154,7 @@ jobs:
       uses: google-github-actions/setup-gcloud@v2
       with:
         project_id: ${{ secrets.GCP_PROJECT_ID }}
+        install_components: beta
 
     - name: Map custom domain to Cloud Run service
       if: ${{ inputs.custom_domain != '' }}
@@ -166,6 +167,9 @@ jobs:
         esac
 
         echo "🌐 Mapping ${{ inputs.custom_domain }} → Cloud Run service: $SERVICE"
+
+        # Ensure the beta component is available and never prompts.
+        gcloud config set disable_prompts true
 
         # Create the domain mapping (idempotent — safe to re-run).
         # Use `gcloud beta run domain-mappings` — the GA command in current
