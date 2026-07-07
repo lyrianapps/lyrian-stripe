@@ -151,10 +151,10 @@ jobs:
 
     - name: Set up Cloud SDK
       if: ${{ inputs.custom_domain != '' }}
-      uses: google-github-actions/setup-gcloud@v2
+      uses: google-github-actions/setup-gcloud@v3
       with:
         project_id: ${{ secrets.GCP_PROJECT_ID }}
-        install_components: beta
+        install_components: "beta"
 
     - name: Map custom domain to Cloud Run service
       if: ${{ inputs.custom_domain != '' }}
@@ -168,12 +168,8 @@ jobs:
 
         echo "🌐 Mapping ${{ inputs.custom_domain }} → Cloud Run service: $SERVICE"
 
-        # gcloud domain-mappings lives in the beta component. The GitHub-hosted
-        # runner's pre-installed gcloud doesn't include it, so install it here.
-        # --quiet auto-accepts the confirmation prompt.
-        gcloud components install beta --quiet
-
-        # Create the domain mapping (idempotent — safe to re-run).
+        # Create the domain mapping (idempotent — safe to re-run). The `beta`
+        # component was pre-installed by the setup-gcloud action above.
         gcloud beta run domain-mappings create \
           --service "$SERVICE" \
           --domain "${{ inputs.custom_domain }}" \
