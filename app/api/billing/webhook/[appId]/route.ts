@@ -33,18 +33,39 @@ export async function POST(
   }
 
   // Look up app's Stripe credentials
-  const app = await prisma.app.findUnique({
-    where: { id: appId },
-    select: { stripeSecretKey: true, stripeWebhookSecret: true },
-  });
+  let app;
+  try {
+    app = await prisma.app.findUnique({
+      where: { id: appId },
+      select: { stripeSecretKey: true, stripeWebhookSecret: true },
+    });
+  } catch (err) {
+    logger.error({ err, appId }, "webhook/app-lookup-failed");
+    return NextResponse.json(
+      { error: "Database unavailable" },
+      { status: 503 },
+    );
+  }
 
   if (!app) {
     logger.warn(`[webhook] Unknown appId: ${appId}`);
     return NextResponse.json({ error: "Unknown app" }, { status: 404 });
   }
 
-  const stripeInstance = getStripeForApp(app.stripeSecretKey);
-  const webhookSecret = getWebhookSecretForApp(app.stripeWebhookSecret);
+  let stripeInstance: Stripe;
+  let webhookSecret: string;
+  try {
+    stripeInstance = getStripeForApp(app.stripeSecretKey);
+    webhookSecret = getWebhookSecretForApp(app.stripeWebhookSecret);
+  } catch (err) {
+    // Most common cause: FIELD_ENCRYPTION_KEY on the running service does not
+    // match the key used to encrypt App.stripeSecretKey / stripeWebhookSecret.
+    logger.error({ err, appId }, "webhook/credential-decrypt-failed");
+    return NextResponse.json(
+      { error: "App credentials misconfigured" },
+      { status: 500 },
+    );
+  }
 
   const body = await req.text();
   const headersList = await headers();
