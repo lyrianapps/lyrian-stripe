@@ -1,0 +1,14 @@
+[
+  {
+    "planKey": "paygo",
+    "name": "Pay per verification",
+    "description": "$0.04 per verification. No monthly minimum.",
+    "stripeMeterEventName": "verification_created",
+    "price": 0,
+    "billingType": "metered",
+    "unitAmount": 4,
+    "sortOrder": 0,
+    "stripeProductId": "prod_Uq3u2CdSNr7xoC",
+    "stripePriceId": "price_1TqNmaERKK3AcPrBmAnMY36k"
+  }
+]
