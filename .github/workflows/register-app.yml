@@ -167,8 +167,11 @@ jobs:
 
         echo "🌐 Mapping ${{ inputs.custom_domain }} → Cloud Run service: $SERVICE"
 
-        # Create the domain mapping (idempotent — safe to re-run)
-        gcloud run domain-mappings create \
+        # Create the domain mapping (idempotent — safe to re-run).
+        # Use `gcloud beta run domain-mappings` — the GA command in current
+        # gcloud versions dropped the --region flag, but the beta form still
+        # accepts it and works identically.
+        gcloud beta run domain-mappings create \
           --service "$SERVICE" \
           --domain "${{ inputs.custom_domain }}" \
           --region us-central1 \
@@ -177,7 +180,7 @@ jobs:
 
         echo ""
         echo "📋 DNS records to configure for ${{ inputs.custom_domain }}:"
-        gcloud run domain-mappings describe \
+        gcloud beta run domain-mappings describe \
           --domain "${{ inputs.custom_domain }}" \
           --region us-central1 \
           --project ${{ secrets.GCP_PROJECT_ID }} \
