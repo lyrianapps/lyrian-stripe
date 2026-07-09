@@ -1,5 +1,16 @@
 [
   {
+    "planKey": "free_trial",
+    "name": "Free Trial",
+    "description": "1,000 free verifications per month.",
+    "price": 0,
+    "billingType": "flat_rate",
+    "freeUnitsPerMonth": 1000,
+    "sortOrder": 0,
+    "stripeProductId": "prod_free_trial_placeholder",
+    "stripePriceId": "price_free_trial_placeholder"
+  },
+  {
     "planKey": "paygo",
     "name": "Pay per verification",
     "description": "$0.04 per verification. No monthly minimum.",
@@ -7,7 +18,7 @@
     "price": 0,
     "billingType": "metered",
     "unitAmount": 4,
-    "sortOrder": 0,
+    "sortOrder": 1,
     "stripeProductId": "prod_UoWmSzc7tzoYHt",
     "stripePriceId": "price_1TotjLCjl7jXMEH9PqzL0Xl7"
   }

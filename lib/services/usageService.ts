@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { getStripeForApp } from "@/lib/stripe";
 import { logger as _logger } from "@/app/middleware/logger";
@@ -106,6 +107,42 @@ async function findActiveSubscription(billingCustomerId: string) {
   });
 }
 
+/**
+ * Look up a BillingCustomer, or create one on the fly for users who have
+ * never checked out. Ensures the free-trial / usage-tracking flow works for
+ * newly signed-up users without requiring the SaaS to pre-provision.
+ *
+ * The stripeCustomerId is stored as a placeholder — the checkout flow later
+ * replaces it with the real Stripe customer ID when the user upgrades.
+ */
+async function upsertBillingCustomer(
+  appId: string,
+  externalUserId: string,
+): Promise<{ id: string }> {
+  const existing = await prisma.billingCustomer.findUnique({
+    where: { appId_externalUserId: { appId, externalUserId } },
+    select: { id: true },
+  });
+  if (existing) return existing;
+
+  // Ensure the App row exists — for consistency with checkout, which also
+  // upserts the App on demand. Avoids FK errors in single-tenant setups.
+  await prisma.app.upsert({
+    where: { id: appId },
+    update: {},
+    create: { id: appId, name: appId },
+  });
+
+  return prisma.billingCustomer.create({
+    data: {
+      appId,
+      externalUserId,
+      stripeCustomerId: `placeholder_${randomBytes(6).toString("hex")}`,
+    },
+    select: { id: true },
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Core service
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,17 +185,8 @@ export async function reportUsage(
     }
   }
 
-  // ── 1. Resolve customer ───────────────────────────────────────────────────
-  const customer = await prisma.billingCustomer.findUnique({
-    where: { appId_externalUserId: { appId, externalUserId } },
-    select: { id: true },
-  });
-
-  if (!customer) {
-    throw new Error(
-      `No billing customer found for appId=${appId} externalUserId=${externalUserId}`,
-    );
-  }
+  // ── 1. Resolve customer (auto-provision if this is their first report) ──
+  const customer = await upsertBillingCustomer(appId, externalUserId);
 
   // ── 2. Resolve active subscription + plan config ──────────────────────────
   const subscription = await findActiveSubscription(customer.id);
@@ -284,16 +312,9 @@ export async function getCurrentUsage(
 ): Promise<UsageResult> {
   const { appId, externalUserId, yearMonth = currentYearMonth() } = input;
 
-  const customer = await prisma.billingCustomer.findUnique({
-    where: { appId_externalUserId: { appId, externalUserId } },
-    select: { id: true },
-  });
-
-  if (!customer) {
-    throw new Error(
-      `No billing customer found for appId=${appId} externalUserId=${externalUserId}`,
-    );
-  }
+  // Auto-provision so newly signed-up users can query their usage before
+  // ever reporting any — returns zeros instead of throwing.
+  const customer = await upsertBillingCustomer(appId, externalUserId);
 
   const subscription = await findActiveSubscription(customer.id);
   const planKey = subscription?.plan ?? "free_trial";

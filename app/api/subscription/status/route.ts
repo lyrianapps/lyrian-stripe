@@ -18,9 +18,9 @@ import {
  * Header: x-api-key: <your-api-key>
  *
  * Responses:
- * - Active:  { plan: "pro", status: "active" }
- * - Expired: { plan: "free_trial", status: "expired", expiredAt: "...", previousPlan: "pro" }
- * - None:    { plan: null, status: null }
+ * - Active:   { plan: "pro", status: "active" }
+ * - Expired:  { plan: "free_trial", status: "expired", expiredAt: "...", previousPlan: "pro" }
+ * - Default:  { plan: "free_trial", status: "trialing" }  (unknown user or no subscription)
  */
 
 // =============================================================================
@@ -101,7 +101,11 @@ const statusHandler = withApiKey(async (request: NextRequest, { appId }) => {
     return NextResponse.json({ error: "App not found" }, { status: 404 });
   }
   if ("notFound" in result || result.length === 0) {
-    return NextResponse.json({ plan: null, status: null });
+    // No customer row yet, or customer exists but has no subscription — treat
+    // as free trial by default. Matches the fallback in usageService, which
+    // uses "free_trial" as the implicit plan for un-subscribed users. Lets
+    // newly signed-up users show a consistent state without a signup hook.
+    return NextResponse.json({ plan: "free_trial", status: "trialing" });
   }
 
   const subscription = selectBestSubscription(result);
