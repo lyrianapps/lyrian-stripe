@@ -52,7 +52,7 @@ describe("GET /api/subscription/status - edge cases", () => {
     expect(response.status).toBe(400);
   });
 
-  it("should return null status for unknown externalUserId", async () => {
+  it("should return free_trial default for unknown externalUserId", async () => {
     const { GET } = await import("@/app/api/subscription/status/route");
 
     const request = createGetRequest(
@@ -65,8 +65,8 @@ describe("GET /api/subscription/status - edge cases", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.plan).toBeNull();
-    expect(data.status).toBeNull();
+    expect(data.plan).toBe("free_trial");
+    expect(data.status).toBe("trialing");
   });
 
   it("should return expired status for subscription past period end", async () => {

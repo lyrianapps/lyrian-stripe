@@ -45,7 +45,7 @@ describe("GET /api/subscription/status", () => {
     expect(data.status).toBe("active");
   });
 
-  it("should return null for user without subscription", async () => {
+  it("should return free_trial default for user without subscription", async () => {
     const { GET } = await import("@/app/api/subscription/status/route");
 
     const request = createGetRequest(
@@ -60,8 +60,8 @@ describe("GET /api/subscription/status", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.plan).toBeNull();
-    expect(data.status).toBeNull();
+    expect(data.plan).toBe("free_trial");
+    expect(data.status).toBe("trialing");
   });
 
   it("should return 401 for invalid API key", async () => {
