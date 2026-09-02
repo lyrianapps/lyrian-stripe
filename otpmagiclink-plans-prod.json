@@ -1,0 +1,22 @@
+[
+  {
+    "planKey": "free_trial",
+    "name": "Free Trial",
+    "description": "Unlimited test runs. 1 project. Community support.",
+    "price": 0,
+    "billingType": "flat_rate",
+    "sortOrder": 0,
+    "stripeProductId": "prod_VBk7e8yeEWCe23",
+    "stripePriceId": "price_1UBMcvERKK3AcPrBF7NNtpdL"
+  },
+  {
+    "planKey": "pro",
+    "name": "Pro",
+    "description": "Unlimited test runs & projects. CI/CD integration. Email support.",
+    "price": 1900,
+    "billingType": "flat_rate",
+    "sortOrder": 1,
+    "stripeProductId": "prod_VBk88agZOJFOJ8",
+    "stripePriceId": "price_1UBMe0ERKK3AcPrBxFxwLIDG"
+  }
+]
