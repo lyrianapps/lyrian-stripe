@@ -1,7 +1,7 @@
 import { Heading } from "@/app/components/Heading";
 import { Paragraph } from "@/app/components/Paragraph";
 import { Button } from "@/app/components/Button";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Check } from "lucide-react";
 
 interface PlanCardProps {
   name: string;
@@ -40,9 +40,10 @@ export function PlanCard({
           </div>
         )}
       </div>
-      <div className="mt-4 sm:mt-0">
+      <div className="mt-4 sm:mt-0 sm:ml-4 shrink-0">
         {current ? (
-          <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700">
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm ring-1 ring-blue-700/10 dark:bg-blue-500 dark:ring-blue-400/20">
+            <Check className="w-3.5 h-3.5" aria-hidden="true" />
             Current plan
           </span>
         ) : (
