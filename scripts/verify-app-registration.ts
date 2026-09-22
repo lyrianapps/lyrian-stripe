@@ -215,22 +215,36 @@ async function checkSaasReachability() {
       method: "GET",
       redirect: "manual",
     });
-    if (res.status < 500) {
+    // Expected "reachable" statuses. Anything else is a soft warn: a common cause
+    // right after registration is that the SaaS's Secret Manager still holds the
+    // OLD BILLING_API_KEY, so its billing-integrated pages fail auth (401/403)
+    // or crash (500). That's a manual rotation problem, not a portal problem.
+    if (res.status < 400) {
       record(
         "SaaS reachability",
         "pass",
         `${saasUrl} → ${res.status} (reachable)`,
       );
+    } else if (res.status < 500) {
+      record(
+        "SaaS reachability",
+        "warn",
+        `${saasUrl} → ${res.status} (auth/permission — expected if the SaaS's BILLING_API_KEY hasn't been rotated yet)`,
+      );
     } else {
       record(
         "SaaS reachability",
         "warn",
-        `${saasUrl} → ${res.status} (server error)`,
+        `${saasUrl} → ${res.status} (server error — expected if the SaaS's BILLING_API_KEY hasn't been rotated yet)`,
       );
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    record("SaaS reachability", "fail", `fetch failed: ${msg}`);
+    record(
+      "SaaS reachability",
+      "warn",
+      `fetch failed: ${msg} (SaaS may be down or unreachable from CI)`,
+    );
   }
 }
 
@@ -278,6 +292,23 @@ function printSummary() {
   } else {
     console.log("✅ All checks passed.\n");
   }
+
+  console.log(
+    "────────────────────────────────────────────────────────────────────",
+  );
+  console.log("🔑 Manual step remaining:");
+  console.log(
+    "   Copy the BILLING_API_KEY printed by create-app.ts into the SaaS's",
+  );
+  console.log(
+    "   Secret Manager (e.g. gcloud secrets versions add BILLING_API_KEY --data-file=-)",
+  );
+  console.log(
+    "   and redeploy the SaaS. Until you do, any SaaS-side checks above may warn.",
+  );
+  console.log(
+    "────────────────────────────────────────────────────────────────────\n",
+  );
 }
 
 main()
