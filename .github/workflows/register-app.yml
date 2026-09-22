@@ -51,6 +51,10 @@ on:
         description: 'Custom domain for this app''s billing portal (e.g. billing.saas-a.com). Leave blank to use the shared billing service URL.'
         required: false
         type: string
+      saas_url:
+        description: 'Public URL of the SaaS app being registered (e.g. https://otp-magic-link-xxx.run.app). Used only for a post-registration ping — leave blank to skip.'
+        required: false
+        type: string
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -148,6 +152,19 @@ jobs:
         echo ""
         echo "⚠️  IMPORTANT: Copy the API key from the output above!"
         echo "⚠️  It will NOT be shown again!"
+
+    - name: Verify App Registration
+      env:
+        DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
+        BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
+        APP_STRIPE_SECRET_KEY: ${{ inputs.stripe_secret_key }}
+        APP_SAAS_URL: ${{ inputs.saas_url }}
+        APP_SAAS_JWT_SECRET: ${{ inputs.saas_jwt_secret }}
+      continue-on-error: true
+      run: |
+        if [ -n "$APP_STRIPE_SECRET_KEY" ]; then echo "::add-mask::$APP_STRIPE_SECRET_KEY"; fi
+        if [ -n "$APP_SAAS_JWT_SECRET" ];   then echo "::add-mask::$APP_SAAS_JWT_SECRET";   fi
+        npx tsx scripts/verify-app-registration.ts "${{ inputs.app_id }}"
 
     - name: Set up Cloud SDK
       if: ${{ inputs.custom_domain != '' }}
