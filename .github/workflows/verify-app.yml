@@ -1,0 +1,94 @@
+name: Verify App
+run-name: "Verify App (${{ inputs.environment }}: ${{ inputs.app_id }})"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment (development, stage, or prod)'
+        required: true
+        type: choice
+        options:
+        - development
+        - stage
+        - prod
+      app_id:
+        description: 'App ID to verify (e.g. otp-magic-link)'
+        required: true
+        type: string
+      saas_url:
+        description: 'Public URL of the SaaS app (e.g. https://otp-magic-link-xxx.run.app). Leave blank to skip the SaaS reachability ping.'
+        required: false
+        type: string
+  # Allow other workflows (Register App) to call this as a reusable workflow so
+  # it renders as its own node in the workflow graph.
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      app_id:
+        required: true
+        type: string
+      saas_url:
+        required: false
+        type: string
+    secrets:
+      GCP_PROJECT_ID:
+        required: true
+      GCP_SA_KEY:
+        required: true
+      DB_MIGRATE_URL:
+        required: true
+      FIELD_ENCRYPTION_KEY:
+        required: true
+      BILLING_APP_URL:
+        required: true
+      CLOUD_SQL_CONNECTION_NAME:
+        required: true
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: "yarn"
+
+    - name: Install dependencies
+      run: yarn install --frozen-lockfile
+
+    - name: Generate Prisma Client
+      run: npx prisma generate
+
+    - name: Google Auth
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Install Cloud SQL Auth Proxy
+      run: |
+        curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.3/cloud-sql-proxy.linux.amd64
+        chmod +x cloud-sql-proxy
+
+    - name: Run verification
+      env:
+        DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
+        FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
+        BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
+        APP_SAAS_URL: ${{ inputs.saas_url }}
+      run: |
+        ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 &
+        sleep 5
+
+        npx tsx scripts/verify-app-registration.ts "${{ inputs.app_id }}"

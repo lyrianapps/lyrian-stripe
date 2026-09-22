@@ -21,6 +21,7 @@
 import "dotenv/config";
 import Stripe from "stripe";
 import { prisma } from "../lib/prisma";
+import { decryptField } from "../lib/crypto";
 
 const REQUIRED_STRIPE_EVENTS = [
   "checkout.session.completed",
@@ -74,13 +75,31 @@ async function checkAppRow(appId: string) {
   return app;
 }
 
-async function checkStripeKey(): Promise<Stripe | null> {
-  const key = process.env.APP_STRIPE_SECRET_KEY;
+async function checkStripeKey(
+  storedEncryptedKey: string | null,
+): Promise<Stripe | null> {
+  // Prefer the plaintext env var (only present during a fresh registration),
+  // otherwise decrypt the stored one so standalone re-runs still work.
+  const source = process.env.APP_STRIPE_SECRET_KEY ? "input" : "stored";
+  let key: string | null | undefined = process.env.APP_STRIPE_SECRET_KEY;
+  if (!key) {
+    try {
+      key = decryptField(storedEncryptedKey);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      record(
+        "Stripe secret key",
+        "fail",
+        `failed to decrypt stored key: ${msg} (FIELD_ENCRYPTION_KEY mismatch?)`,
+      );
+      return null;
+    }
+  }
   if (!key) {
     record(
       "Stripe secret key",
       "warn",
-      "APP_STRIPE_SECRET_KEY not set — skipping (using portal default?)",
+      "no key available (neither APP_STRIPE_SECRET_KEY nor App.stripeSecretKey set) — skipping",
     );
     return null;
   }
@@ -88,7 +107,11 @@ async function checkStripeKey(): Promise<Stripe | null> {
   try {
     const balance = await stripe.balance.retrieve();
     const mode = balance.livemode ? "LIVE" : "TEST";
-    record("Stripe secret key", "pass", `works — key is in ${mode} mode`);
+    record(
+      "Stripe secret key",
+      "pass",
+      `works — key is in ${mode} mode (source: ${source})`,
+    );
     return stripe;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -265,7 +288,7 @@ async function main() {
     return;
   }
 
-  const stripe = await checkStripeKey();
+  const stripe = await checkStripeKey(app.stripeSecretKey);
   if (stripe) {
     await checkStripeWebhookEndpoints(stripe, appId);
   }

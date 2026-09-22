@@ -154,19 +154,6 @@ jobs:
         echo "⚠️  IMPORTANT: Copy the API key from the output above!"
         echo "⚠️  It will NOT be shown again!"
 
-    - name: Verify App Registration
-      env:
-        DATABASE_URL: ${{ secrets.DB_MIGRATE_URL }}
-        BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
-        APP_STRIPE_SECRET_KEY: ${{ inputs.stripe_secret_key }}
-        APP_SAAS_URL: ${{ inputs.saas_url }}
-        APP_SAAS_JWT_SECRET: ${{ inputs.saas_jwt_secret }}
-      continue-on-error: true
-      run: |
-        if [ -n "$APP_STRIPE_SECRET_KEY" ]; then echo "::add-mask::$APP_STRIPE_SECRET_KEY"; fi
-        if [ -n "$APP_SAAS_JWT_SECRET" ];   then echo "::add-mask::$APP_SAAS_JWT_SECRET";   fi
-        npx tsx scripts/verify-app-registration.ts "${{ inputs.app_id }}"
-
     - name: Set up Cloud SDK
       if: ${{ inputs.custom_domain != '' }}
       uses: google-github-actions/setup-gcloud@v3
@@ -206,3 +193,18 @@ jobs:
         echo ""
         echo "   Point the above DNS record(s) at your domain registrar, then TLS will be"
         echo "   provisioned automatically by Cloud Run (may take up to 15 minutes)."
+
+  verify:
+    needs: register-app
+    uses: ./.github/workflows/verify-app.yml
+    with:
+      environment: ${{ inputs.environment }}
+      app_id: ${{ inputs.app_id }}
+      saas_url: ${{ inputs.saas_url }}
+    secrets:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      DB_MIGRATE_URL: ${{ secrets.DB_MIGRATE_URL }}
+      FIELD_ENCRYPTION_KEY: ${{ secrets.FIELD_ENCRYPTION_KEY }}
+      BILLING_APP_URL: ${{ secrets.BILLING_APP_URL }}
+      CLOUD_SQL_CONNECTION_NAME: ${{ secrets.CLOUD_SQL_CONNECTION_NAME }}
