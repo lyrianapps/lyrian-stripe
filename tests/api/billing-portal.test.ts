@@ -195,7 +195,14 @@ describe("GET /api/billing/portal", () => {
       );
 
       const request = createTestRequest(
-        `https://billing.otpmagiclink.com/api/billing/portal?token=${validToken}`,
+        `http://0.0.0.0:8080/api/billing/portal?token=${validToken}`,
+        {
+          headers: {
+            host: "billing.otpmagiclink.com",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "billing.otpmagiclink.com",
+          },
+        },
       );
 
       const response = await GET(request);
@@ -204,9 +211,7 @@ describe("GET /api/billing/portal", () => {
       expect(response.headers.get("location")).toContain(
         "https://billing.otpmagiclink.com/subscription",
       );
-      expect(response.headers.get("location")).not.toContain(
-        "us-central1.run.app",
-      );
+      expect(response.headers.get("location")).not.toContain("0.0.0.0:8080");
       expect(response.headers.get("set-cookie")).toContain("billing_session");
     } finally {
       process.env.BILLING_APP_URL = previousBillingAppUrl;

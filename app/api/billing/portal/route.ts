@@ -8,12 +8,27 @@ import { prisma } from "@/lib/prisma";
 const log = logger.child({ route: "GET /api/billing/portal" });
 
 function resolvePortalOrigin(req: NextRequest): string {
-  const requestOrigin = req.nextUrl.origin;
+  const forwardedProto =
+    req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ??
+    req.headers.get("x-forwarded-protocol")?.split(",")[0]?.trim() ??
+    (req.nextUrl.protocol ? req.nextUrl.protocol.replace(":", "") : "https");
 
-  // Keep redirects on the same host that received the request so the
-  // host-scoped billing_session cookie survives custom-domain flows.
-  if (requestOrigin && requestOrigin !== "null") {
-    return requestOrigin;
+  const forwardedHost =
+    req.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ??
+    req.headers.get("x-forwarded-server")?.split(",")[0]?.trim() ??
+    req.headers.get("host") ??
+    req.nextUrl.host;
+
+  const publicHost =
+    forwardedHost && forwardedHost !== "0.0.0.0:8080"
+      ? forwardedHost
+      : req.nextUrl.host;
+
+  // Keep redirects on the same public host that set the billing_session cookie.
+  // Proxy environments can expose 0.0.0.0 / internal service addresses in
+  // req.nextUrl.origin, so prefer the forwarded public host instead.
+  if (publicHost) {
+    return `${forwardedProto}://${publicHost}`;
   }
 
   const configuredOrigin = process.env.BILLING_APP_URL;
