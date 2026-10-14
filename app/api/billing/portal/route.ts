@@ -7,6 +7,23 @@ import { prisma } from "@/lib/prisma";
 
 const log = logger.child({ route: "GET /api/billing/portal" });
 
+function resolvePortalOrigin(req: NextRequest): string {
+  const requestOrigin = req.nextUrl.origin;
+
+  // Keep redirects on the same host that received the request so the
+  // host-scoped billing_session cookie survives custom-domain flows.
+  if (requestOrigin && requestOrigin !== "null") {
+    return requestOrigin;
+  }
+
+  const configuredOrigin = process.env.BILLING_APP_URL;
+  if (!configuredOrigin) {
+    throw new Error("BILLING_APP_URL is not configured");
+  }
+
+  return configuredOrigin;
+}
+
 /**
  * When the request arrives via a custom domain (billing.saas-a.com), resolve
  * the appId that owns that domain. Returns null for localhost / raw Cloud Run
@@ -27,12 +44,7 @@ async function resolveAppFromHostname(
 }
 
 export async function GET(req: NextRequest) {
-  // ✅ Always use explicit base URL (Cloud Run safe)
-  const origin = process.env.BILLING_APP_URL;
-
-  if (!origin) {
-    throw new Error("BILLING_APP_URL is not configured");
-  }
+  const origin = resolvePortalOrigin(req);
 
   // Rate limit check: 60 requests per minute, keyed per user via JWT sub
   const rateLimitResult = await checkRateLimit(
@@ -123,7 +135,7 @@ export async function GET(req: NextRequest) {
     // `secure` is only enforced over HTTPS — don't set it on plain HTTP so
     // the cookie isn't silently dropped when the service is accessed via http://
     // (e.g. localhost in dev/test environments).
-    const isSecure = origin?.startsWith("https://") ?? false;
+    const isSecure = origin.startsWith("https://");
     response.cookies.set("billing_session", sessionToken, {
       httpOnly: true,
       secure: isSecure,
