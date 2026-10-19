@@ -56,7 +56,24 @@ export interface EmailContext {
   periodEnd?: string | null;
   /** Estimated metered usage amount in cents */
   estimatedAmount?: number | null;
+  /** Stripe will auto-renew at periodEnd (i.e. cancelAtPeriodEnd is false) */
+  willRenew?: boolean;
+  /** Plan the customer drops to if the subscription ends */
+  fallbackPlanName?: string;
+  /** App is billing through Stripe test keys — no real charges */
+  testMode?: boolean;
 }
+
+function formatDate(iso?: string | null): string {
+  return iso
+    ? new Date(iso).toLocaleDateString("en-US", {
+        dateStyle: "long",
+        timeZone: "UTC",
+      })
+    : "soon";
+}
+
+const TEST_MODE_NOTICE = `<p style="padding:8px 12px;background:#fff7e6;border:1px solid #f5c26b;border-radius:4px"><strong>Test mode:</strong> this account is billed through a test environment. No real charges will be made.</p>`;
 
 /**
  * Send subscription-related email notifications.
@@ -189,17 +206,39 @@ function getEmailContent(
         `,
       };
 
-    case "subscription_expiring_soon":
-      return {
-        subject: `Your ${appName} subscription expires soon`,
-        html: `
-          <h1>Your subscription is expiring soon</h1>
+    case "subscription_expiring_soon": {
+      const date = formatDate(context.periodEnd);
+      const fallback = context.fallbackPlanName || "Free Trial";
+      const testNotice = context.testMode ? TEST_MODE_NOTICE : "";
+
+      if (context.willRenew) {
+        return {
+          subject: `${context.testMode ? "[Test] " : ""}Your ${appName} ${planName} plan renews on ${date}`,
+          html: `
+          ${testNotice}
+          <h1>Your subscription renews soon</h1>
           <p>Hi ${name},</p>
-          <p>Your <strong>${planName}</strong> plan on ${appName} will expire on <strong>${context.periodEnd ? new Date(context.periodEnd).toLocaleDateString() : "soon"}</strong>.</p>
-          <p>To keep uninterrupted access, renew or update your payment method before then.</p>
+          <p>Your <strong>${planName}</strong> plan on ${appName} will automatically renew on <strong>${date}</strong>.</p>
+          ${amount ? `<p>${context.testMode ? "A test charge" : "A charge"} of <strong>${formattedAmount}</strong> will be made to your payment method on file.</p>` : ""}
+          <p>No action is needed. If your card has changed, update your payment method before then to avoid any interruption.</p>
+          <p>Best regards,<br>The ${appName} Team</p>
+        `,
+        };
+      }
+
+      return {
+        subject: `${context.testMode ? "[Test] " : ""}Your ${appName} ${planName} plan ends on ${date}`,
+        html: `
+          ${testNotice}
+          <h1>Your subscription is ending</h1>
+          <p>Hi ${name},</p>
+          <p>Your <strong>${planName}</strong> plan on ${appName} is set to end on <strong>${date}</strong> and will not renew.</p>
+          <p>After that date your account will move to the <strong>${fallback}</strong> plan.</p>
+          <p>To keep your ${planName} features, resubscribe from your billing settings before then.</p>
           <p>Best regards,<br>The ${appName} Team</p>
         `,
       };
+    }
 
     case "usage_bill_upcoming":
       return {
@@ -207,7 +246,7 @@ function getEmailContent(
         html: `
           <h1>Upcoming usage bill</h1>
           <p>Hi ${name},</p>
-          <p>Your <strong>${planName}</strong> billing period ends on <strong>${context.periodEnd ? new Date(context.periodEnd).toLocaleDateString() : "soon"}</strong>.</p>
+          <p>Your <strong>${planName}</strong> billing period ends on <strong>${formatDate(context.periodEnd)}</strong>.</p>
           ${context.estimatedAmount ? `<p>Based on your usage so far, your estimated bill is <strong>${(context.estimatedAmount / 100).toFixed(2)} ${currency?.toUpperCase() || "USD"}</strong>.</p>` : ""}
           <p>You can review your usage at any time in your billing portal.</p>
           <p>Best regards,<br>The ${appName} Team</p>

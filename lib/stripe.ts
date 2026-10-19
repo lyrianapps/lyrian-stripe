@@ -19,6 +19,12 @@ export function getStripeForApp(appStripeSecretKey?: string | null): Stripe {
   return new Stripe(key, { apiVersion: "2025-12-15.clover" });
 }
 
+/** True when the app (or global fallback) bills through Stripe test-mode keys. */
+export function isStripeTestMode(appStripeSecretKey?: string | null): boolean {
+  const key = decryptField(appStripeSecretKey) ?? env.STRIPE_SECRET_KEY;
+  return !!key && /^(sk|rk)_test_/.test(key);
+}
+
 /** Returns the webhook secret for an app, falling back to the global secret. */
 export function getWebhookSecretForApp(
   appWebhookSecret?: string | null,

@@ -6,6 +6,7 @@ import {
   SubscriptionCheckResult,
 } from "@/lib/services/subscriptionChecker";
 import { sendSubscriptionEmail } from "@/lib/email";
+import { isStripeTestMode } from "@/lib/stripe";
 
 const logger = _logger.child({ module: "expirationService" });
 
@@ -193,6 +194,7 @@ export async function sendRenewalWarnings(
       id: true,
       plan: true,
       currentPeriodEnd: true,
+      cancelAtPeriodEnd: true,
       billingCustomer: {
         select: {
           email: true,
@@ -201,6 +203,16 @@ export async function sendRenewalWarnings(
               name: true,
               resendApiKey: true,
               fromEmail: true,
+              stripeSecretKey: true,
+              plans: {
+                where: { planKey: { in: ["free_trial", "basic", "pro"] } },
+                select: {
+                  planKey: true,
+                  name: true,
+                  price: true,
+                  currency: true,
+                },
+              },
             },
           },
         },
@@ -231,17 +243,27 @@ export async function sendRenewalWarnings(
     }
 
     try {
+      const { app } = sub.billingCustomer;
+      const currentPlan = app.plans.find((p) => p.planKey === sub.plan);
+      // downgradeSubscription always drops expired paid plans to free_trial
+      const fallbackPlan = app.plans.find((p) => p.planKey === "free_trial");
+
       await sendSubscriptionEmail(
         "subscription_expiring_soon",
         {
           to: email,
-          appName: sub.billingCustomer.app.name,
-          planName: sub.plan,
+          appName: app.name,
+          planName: currentPlan?.name ?? sub.plan,
+          amount: currentPlan?.price ?? null,
+          currency: currentPlan?.currency ?? null,
           periodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
+          willRenew: !sub.cancelAtPeriodEnd,
+          fallbackPlanName: fallbackPlan?.name ?? "Free Trial",
+          testMode: isStripeTestMode(app.stripeSecretKey),
         },
         {
-          resendApiKey: sub.billingCustomer.app.resendApiKey,
-          fromEmail: sub.billingCustomer.app.fromEmail,
+          resendApiKey: app.resendApiKey,
+          fromEmail: app.fromEmail,
         },
       );
 

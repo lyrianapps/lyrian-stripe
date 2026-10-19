@@ -52,6 +52,7 @@ vi.mock("@/app/middleware/logger", () => {
 });
 
 import { sendSubscriptionEmail, previewEmail, EmailContext } from "@/lib/email";
+import { isStripeTestMode } from "@/lib/stripe";
 
 describe("Email Service", () => {
   beforeEach(() => {
@@ -148,6 +149,74 @@ describe("Email Service", () => {
 
       expect(result.html).not.toContain("USD");
       expect(result.html).not.toContain("charged");
+    });
+
+    it("should generate a renewal notice when the subscription auto-renews", () => {
+      const result = previewEmail("subscription_expiring_soon", {
+        ...baseContext,
+        amount: 2999,
+        currency: "usd",
+        periodEnd: "2026-10-14T00:00:00.000Z",
+        willRenew: true,
+      });
+
+      expect(result.subject).toBe(
+        "Your Test App Pro plan renews on October 14, 2026",
+      );
+      expect(result.html).toContain("automatically renew");
+      expect(result.html).toContain("29.99 USD");
+      expect(result.html).not.toContain("Test mode");
+    });
+
+    it("should generate an ending notice with the fallback plan when canceled", () => {
+      const result = previewEmail("subscription_expiring_soon", {
+        ...baseContext,
+        periodEnd: "2026-10-14T00:00:00.000Z",
+        willRenew: false,
+        fallbackPlanName: "Free Trial",
+      });
+
+      expect(result.subject).toBe(
+        "Your Test App Pro plan ends on October 14, 2026",
+      );
+      expect(result.html).toContain("will not renew");
+      expect(result.html).toContain("<strong>Free Trial</strong> plan");
+    });
+
+    it("should flag test-mode billing in the expiring email", () => {
+      const result = previewEmail("subscription_expiring_soon", {
+        ...baseContext,
+        willRenew: true,
+        testMode: true,
+      });
+
+      expect(result.subject.startsWith("[Test] ")).toBe(true);
+      expect(result.html).toContain("No real charges will be made");
+    });
+
+    it.each([true, false])(
+      "should not label live-mode expiring emails as test (willRenew=%s)",
+      (willRenew) => {
+        const result = previewEmail("subscription_expiring_soon", {
+          ...baseContext,
+          willRenew,
+          testMode: false,
+        });
+
+        expect(result.subject).not.toContain("[Test]");
+        expect(result.html).not.toContain("Test mode");
+      },
+    );
+  });
+
+  describe("isStripeTestMode", () => {
+    it.each([
+      ["sk_test_abc", true],
+      ["rk_test_abc", true],
+      ["sk_live_abc", false],
+      ["rk_live_abc", false],
+    ])("%s → %s", (key, expected) => {
+      expect(isStripeTestMode(key)).toBe(expected);
     });
   });
 
