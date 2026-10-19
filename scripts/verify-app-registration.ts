@@ -124,6 +124,16 @@ async function checkStripeKey(
   }
 }
 
+// Billing service hosts look like billing.<app>.com or lyrian-stripe-<env>-*.run.app.
+function isBillingHost(url: string): boolean {
+  try {
+    const host = new URL(url).host.toLowerCase();
+    return host.includes("lyrian") || host.startsWith("billing.");
+  } catch {
+    return false;
+  }
+}
+
 async function checkStripeWebhookEndpoints(stripe: Stripe, appId: string) {
   let endpoints: Stripe.WebhookEndpoint[];
   try {
@@ -140,11 +150,29 @@ async function checkStripeWebhookEndpoints(stripe: Stripe, appId: string) {
   }
 
   const suffix = `/api/billing/webhook/${appId}`;
-  const matching = endpoints.filter(
+  const pathMatches = endpoints.filter(
     (e) => e.url.endsWith(suffix) && e.status === "enabled",
   );
 
+  // A correct path on the wrong host (e.g. the SaaS's own service) silently drops every event.
+  const matching = pathMatches.filter((e) => isBillingHost(e.url));
+  const wrongHost = pathMatches.filter((e) => !isBillingHost(e.url));
+  if (wrongHost.length) {
+    record(
+      "Stripe webhook host",
+      "fail",
+      `endpoint(s) ${wrongHost.map((e) => e.url).join(", ")} don't point at the billing service (host must contain "lyrian" or start with "billing.")`,
+    );
+  } else if (matching.length) {
+    record(
+      "Stripe webhook host",
+      "pass",
+      `${matching[0].url} points at the billing service`,
+    );
+  }
+
   if (matching.length === 0) {
+    if (pathMatches.length) return;
     const nearest = endpoints
       .filter((e) => e.url.includes("/api/billing/webhook/"))
       .map((e) => e.url)
