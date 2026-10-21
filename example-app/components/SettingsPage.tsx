@@ -209,10 +209,12 @@ export function SettingsPage() {
   const isMetered =
     usage?.billingType === "metered" || usage?.billingType === "volume";
   const pct = usage?.cap ? Math.min((usage.used / usage.cap) * 100, 100) : 0;
+  // Lyrian reports unsubscribed users as free_trial/trialing, so a free trial isn't a paid subscription.
   const hasSubscription =
-    status?.status === "active" ||
-    status?.status === "past_due" ||
-    status?.status === "trialing";
+    status?.plan !== "free_trial" &&
+    (status?.status === "active" ||
+      status?.status === "past_due" ||
+      status?.status === "trialing");
   // Estimated paygo cost at $0.04/todo
   const estimatedCost =
     isMetered && usage ? (usage.used * 0.04).toFixed(2) : null;
