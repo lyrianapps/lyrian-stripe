@@ -70,6 +70,11 @@ export async function createSession(payload: {
         console.error("Error creating BillingCustomer:", err);
         throw err;
       }
+    } else if (payload.email && customer.email !== payload.email) {
+      customer = await prisma.billingCustomer.update({
+        where: { id: customer.id },
+        data: { email: payload.email },
+      });
     }
 
     // Step 2: Create a BillingSession for this customer

@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
     session.userId,
     safeReturnUrl,
     session.billingType,
+    session.email,
   );
   log.info(
     { returnUrl: safeReturnUrl, billingType: session.billingType },
