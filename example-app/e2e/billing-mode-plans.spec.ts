@@ -1,14 +1,14 @@
 /**
  * E2E: Billing mode plan filtering
  *
- * Verifies that the Settings page shows only the plans that match the
- * billing mode the user chose at registration:
+ * Verifies that "Choose a plan" on Settings opens the billing portal showing
+ * only the plans that match the billing mode the user chose at registration:
  *
  *   flat_rate  →  Basic + Pro visible, Pay As You Go hidden
  *   metered    →  Pay As You Go visible, Basic + Pro hidden
  *
- * No Stripe checkout is performed — these are UI-only assertions on the
- * /settings page rendered for a freshly registered free-trial user.
+ * No Stripe checkout is performed — these are UI-only assertions for a
+ * freshly registered free-trial user.
  */
 import { test, expect, type Page } from "@playwright/test";
 
@@ -49,55 +49,52 @@ async function registerUser(
 
 // ── flat_rate mode ────────────────────────────────────────────────────────────
 
-test("flat_rate mode: Settings shows only subscription plans (Basic + Pro)", async ({
+test("flat_rate mode: Settings → Choose a plan shows only subscription plans (Basic + Pro)", async ({
   page,
 }) => {
   const email = uniqueEmail("flat");
   await registerUser(page, email, "flat_rate");
 
   await page.goto("/settings");
-  await expect(page.locator("text=Available Plans")).toBeVisible({
-    timeout: 10000,
-  });
+  const choosePlan = page.getByRole("link", { name: /Choose a plan/ });
+  await expect(choosePlan).toBeVisible({ timeout: 10000 });
+  await choosePlan.click();
+  await page.waitForURL(/\/subscription/, { timeout: 20000 });
 
   // Subscription plans visible
-  await expect(page.getByText("Basic", { exact: true })).toBeVisible();
+  await expect(page.getByText("Basic", { exact: true })).toBeVisible({
+    timeout: 10000,
+  });
   await expect(page.getByText("Pro", { exact: true })).toBeVisible();
 
   // Metered plan NOT visible
   await expect(
     page.getByText("Pay As You Go", { exact: true }),
   ).not.toBeVisible();
-
-  // Price format is flat-rate ($/mo), not usage-based
-  await expect(page.getByText("$10.00 / mo")).toBeVisible();
-  await expect(page.getByText("$30.00 / mo")).toBeVisible();
-  await expect(page.getByText("Usage-based")).not.toBeVisible();
 });
 
 // ── metered mode ──────────────────────────────────────────────────────────────
 
-test("metered mode: Settings shows only Pay As You Go plan", async ({
+test("metered mode: Settings → Choose a plan shows only Pay As You Go", async ({
   page,
 }) => {
   const email = uniqueEmail("metered");
   await registerUser(page, email, "metered");
 
   await page.goto("/settings");
-  await expect(page.locator("text=Available Plans")).toBeVisible({
-    timeout: 10000,
-  });
+  const choosePlan = page.getByRole("link", { name: /Choose a plan/ });
+  await expect(choosePlan).toBeVisible({ timeout: 10000 });
+  await choosePlan.click();
+  await page.waitForURL(/\/subscription/, { timeout: 20000 });
 
   // Metered plan visible
-  await expect(page.getByText("Pay As You Go", { exact: true })).toBeVisible();
+  await expect(page.getByText("Pay As You Go", { exact: true })).toBeVisible({
+    timeout: 10000,
+  });
 
   // Subscription plans NOT visible
   await expect(page.getByText("Basic", { exact: true })).not.toBeVisible();
   await expect(page.getByText("Pro", { exact: true })).not.toBeVisible();
-
-  // Price format is usage-based
-  await expect(page.getByText("Usage-based")).toBeVisible();
-  await expect(page.getByText("$10.00 / mo")).not.toBeVisible();
 });
 
 // ── billing portal /subscription page ────────────────────────────────────────

@@ -70,46 +70,34 @@ test("register → paygo upgrade → redirected back to settings", async ({
     fullPage: true,
   });
 
-  // ── 1b. Establish billing_session before checkout ──────────────────────────
-  // The billing service's /subscription page requires billing_session. The
-  // cookie is set by /api/billing/portal-redirect, which must be visited before
-  // Stripe checkout so the cookie persists on the billing domain when Stripe
-  // redirects back after payment.
-  await page.goto("/api/billing/portal-redirect");
+  // ── 2. Settings → "Choose a plan" → billing portal ─────────────────────────────
+  await page.goto("/settings");
+  await expect(page).toHaveURL("/settings", { timeout: 10000 });
+  const choosePlan = page.getByRole("link", { name: /Choose a plan/ });
+  await expect(choosePlan).toBeVisible({ timeout: 10000 });
+
+  await page.screenshot({
+    path: path.join("e2e", "screenshots", "flow-04-settings.png"),
+    fullPage: true,
+  });
+
+  await choosePlan.click();
   await page.waitForURL(/\/subscription/, { timeout: 20000 });
   billingOriginGlobal = new URL(page.url()).origin;
 
   await page.screenshot({
-    path: path.join("e2e", "screenshots", "flow-04-billing-portal.png"),
+    path: path.join("e2e", "screenshots", "flow-05-billing-portal-plans.png"),
     fullPage: true,
   });
 
-  // Navigate back to the example app to proceed with checkout
-  await page.goto("/settings");
-
-  // ── 2. Navigate to Settings ────────────────────────────────────────────────
-  await page.goto("/settings");
-  await expect(page).toHaveURL("/settings", { timeout: 10000 });
-  await expect(page.locator("text=Available Plans")).toBeVisible({
-    timeout: 10000,
-  });
-
-  await page.screenshot({
-    path: path.join("e2e", "screenshots", "flow-05-settings-plans.png"),
-    fullPage: true,
-  });
-
-  // ── 3. Click Upgrade on the paygo plan card ────────────────────────────────
-  // Filter to the div that contains *both* "Pay As You Go" text and an Upgrade
-  // button — this uniquely identifies the card and avoids matching plain text
-  // nodes or ancestor wrappers (strict mode violation with .first()).
+  // ── 3. Click Upgrade on the paygo plan in the billing portal ────────────────
   const paygoCard = page
     .locator("div")
     .filter({ has: page.getByText("Pay As You Go", { exact: true }) })
-    .filter({ has: page.locator('button:has-text("Upgrade")') })
+    .filter({ has: page.getByRole("button", { name: /Upgrade/ }) })
     .last();
   await expect(paygoCard).toBeVisible({ timeout: 10000 });
-  const upgradeButton = paygoCard.locator('button:has-text("Upgrade")');
+  const upgradeButton = paygoCard.getByRole("button", { name: /Upgrade/ });
   await upgradeButton.click();
 
   // ── 4. Stripe checkout ─────────────────────────────────────────────────────

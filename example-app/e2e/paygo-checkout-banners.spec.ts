@@ -3,7 +3,7 @@
  *
  * Full flow for each decline scenario:
  *   1. Register a paygo user on the example app
- *   2. Go to Settings → click "Upgrade →" on the Pay As You Go plan card
+ *   2. Go to Settings → "Choose a plan" → Upgrade on Pay As You Go in the billing portal
  *   3. Land on Stripe Checkout (checkout.stripe.com)
  *   4. Fill form with a Stripe test decline card & submit
  *   5. Screenshot the Stripe-side error message
@@ -38,12 +38,12 @@ function uniqueEmail(tag: string) {
   return `decline-${tag}-${Date.now()}@example.com`;
 }
 
-// ─── Helper: register → settings → click Upgrade → land on Stripe checkout ──
+// ─── Helper: register → settings → billing portal → Upgrade → Stripe checkout ──
 
 /**
- * Registers a fresh paygo user, establishes a billing_session cookie by
- * visiting the portal redirect, then navigates to /settings and clicks
- * the Upgrade button on the Pay As You Go plan card.
+ * Registers a fresh paygo user, clicks "Choose a plan" on /settings (which
+ * also creates the billing_session cookie), then clicks Upgrade on the Pay As
+ * You Go plan in the billing portal.
  *
  * Caller lands on checkout.stripe.com ready to fill card details.
  */
@@ -71,31 +71,25 @@ async function registerAndStartCheckout(
     return users[users.length - 1]?.userId ?? "";
   });
 
-  // ── 2. Establish billing_session before checkout ──────────────────────────
-  // billing_session must exist on the billing domain so /subscription renders
-  // correctly when Stripe redirects back after payment.
-  await page.goto("/api/billing/portal-redirect");
+  // ── 2. Settings → "Choose a plan" → billing portal → Upgrade on Pay As You Go
+  await page.goto("/settings");
+  const choosePlan = page.getByRole("link", { name: /Choose a plan/ });
+  await expect(choosePlan).toBeVisible({ timeout: 10000 });
+  await choosePlan.click();
   await page.waitForURL(/\/subscription/, { timeout: 20000 });
   const billingOrigin = new URL(page.url()).origin;
   billingOriginGlobal = billingOrigin;
   createdUserIds.push(userId);
 
-  // ── 3. Navigate to Settings ───────────────────────────────────────────────
-  await page.goto("/settings");
-  await expect(page.locator("text=Available Plans")).toBeVisible({
-    timeout: 10000,
-  });
-
-  // ── 4. Click Upgrade on the Pay As You Go plan card ───────────────────────
   const paygoCard = page
     .locator("div")
     .filter({ has: page.getByText("Pay As You Go", { exact: true }) })
-    .filter({ has: page.locator('button:has-text("Upgrade")') })
+    .filter({ has: page.getByRole("button", { name: /Upgrade/ }) })
     .last();
   await expect(paygoCard).toBeVisible({ timeout: 10000 });
-  await paygoCard.locator('button:has-text("Upgrade")').click();
+  await paygoCard.getByRole("button", { name: /Upgrade/ }).click();
 
-  // ── 5. Wait for Stripe Checkout ───────────────────────────────────────────
+  // ── 3. Wait for Stripe Checkout ───────────────────────────────────────────
   await page.waitForURL(/checkout\.stripe\.com/, { timeout: 30000 });
 
   return { email, userId, billingOrigin };
