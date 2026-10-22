@@ -23,7 +23,7 @@ import "dotenv/config";
 import { timingSafeEqual } from "crypto";
 import Stripe from "stripe";
 import { prisma } from "../lib/prisma";
-import { decryptField } from "../lib/crypto";
+import { decryptField, keyFingerprint } from "../lib/crypto";
 
 const REQUIRED_STRIPE_EVENTS = [
   "checkout.session.completed",
@@ -268,11 +268,19 @@ function checkSaasApiKey(storedApiKey: string | null) {
   const b = Buffer.from(storedApiKey ?? "");
   if (a.length === b.length && timingSafeEqual(a, b)) {
     record("SaaS API key", "pass", "SaaS BILLING_API_KEY matches App.apiKey");
+  } else if (storedApiKey && saasKey.trim() === storedApiKey) {
+    record(
+      "SaaS API key",
+      "fail",
+      "SaaS BILLING_API_KEY matches App.apiKey except for surrounding whitespace (space / \\r / newline) — re-save the secret without it",
+    );
   } else {
     record(
       "SaaS API key",
       "fail",
-      "SaaS BILLING_API_KEY does not match App.apiKey — billing calls from the SaaS will return 401",
+      `SaaS BILLING_API_KEY does not match App.apiKey — billing calls from the SaaS will return 401 ` +
+        `(SaaS: len=${saasKey.length}, sha256=${keyFingerprint(saasKey)}; ` +
+        `App.apiKey: ${storedApiKey ? `len=${storedApiKey.length}, sha256=${keyFingerprint(storedApiKey)}` : "not set"})`,
     );
   }
 }
