@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSubscriptionStatus } from "@/lib/billing";
+import { BillingAuthError, getSubscriptionStatus } from "@/lib/billing";
 import { getSession } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 
@@ -20,6 +20,16 @@ export async function GET() {
     return NextResponse.json(status);
   } catch (err) {
     log.error({ err }, "Failed to fetch subscription status");
+    if (err instanceof BillingAuthError) {
+      return NextResponse.json(
+        {
+          plan: null,
+          status: null,
+          error: "Billing is misconfigured: the API key was rejected.",
+        },
+        { status: 502 },
+      );
+    }
     // Return a safe fallback so the UI doesn't crash when billing is down
     return NextResponse.json({ plan: null, status: null });
   }

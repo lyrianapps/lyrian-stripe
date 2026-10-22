@@ -6,6 +6,7 @@ interface SubscriptionStatus {
   plan: string | null;
   status: string | null;
   cancellation?: { scheduledAt: string; message: string };
+  error?: string;
 }
 
 interface Usage {
@@ -251,6 +252,15 @@ export function SettingsPage() {
             />
           </svg>
           <span>Confirming your subscription… this may take a moment.</span>
+        </div>
+      )}
+
+      {status?.error && (
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+          {status.error}
         </div>
       )}
 

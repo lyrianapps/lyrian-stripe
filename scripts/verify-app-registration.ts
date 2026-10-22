@@ -13,12 +13,14 @@
  *   APP_STRIPE_SECRET_KEY     – plaintext, only present during a fresh registration
  *   APP_SAAS_URL              – URL of the SaaS to reachability-check
  *   APP_SAAS_JWT_SECRET       – plaintext, only present during a fresh registration
+ *   APP_BILLING_API_KEY       – the BILLING_API_KEY the SaaS is deployed with
  *
  * Exit codes:
  *   0  always (checks are advisory)
  */
 
 import "dotenv/config";
+import { timingSafeEqual } from "crypto";
 import Stripe from "stripe";
 import { prisma } from "../lib/prisma";
 import { decryptField } from "../lib/crypto";
@@ -54,6 +56,7 @@ async function checkAppRow(appId: string) {
     select: {
       id: true,
       name: true,
+      apiKey: true,
       stripeSecretKey: true,
       stripeWebhookSecret: true,
       jwtSecret: true,
@@ -251,6 +254,29 @@ async function checkPortalWebhookRoute(appId: string) {
   }
 }
 
+function checkSaasApiKey(storedApiKey: string | null) {
+  const saasKey = process.env.APP_BILLING_API_KEY;
+  if (!saasKey) {
+    record(
+      "SaaS API key",
+      "warn",
+      "APP_BILLING_API_KEY not provided — skipping (pass saas_api_key_secret to check it)",
+    );
+    return;
+  }
+  const a = Buffer.from(saasKey);
+  const b = Buffer.from(storedApiKey ?? "");
+  if (a.length === b.length && timingSafeEqual(a, b)) {
+    record("SaaS API key", "pass", "SaaS BILLING_API_KEY matches App.apiKey");
+  } else {
+    record(
+      "SaaS API key",
+      "fail",
+      "SaaS BILLING_API_KEY does not match App.apiKey — billing calls from the SaaS will return 401",
+    );
+  }
+}
+
 async function checkSaasReachability() {
   const saasUrl = process.env.APP_SAAS_URL;
   if (!saasUrl) {
@@ -322,6 +348,7 @@ async function main() {
   }
 
   await checkPortalWebhookRoute(appId);
+  checkSaasApiKey(app.apiKey);
   await checkSaasReachability();
 
   printSummary();

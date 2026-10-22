@@ -20,6 +20,10 @@ on:
         description: 'Public URL of the SaaS app (e.g. https://otp-magic-link-xxx.run.app). Leave blank to skip the SaaS reachability ping.'
         required: false
         type: string
+      saas_api_key_secret:
+        description: 'Secret Manager name holding the SaaS BILLING_API_KEY (e.g. EXAMPLE_APP_BILLING_API_KEY). Leave blank to skip the API key check.'
+        required: false
+        type: string
   # Allow other workflows (Register App) to call this as a reusable workflow so
   # it renders as its own node in the workflow graph.
   workflow_call:
@@ -31,6 +35,9 @@ on:
         required: true
         type: string
       saas_url:
+        required: false
+        type: string
+      saas_api_key_secret:
         required: false
         type: string
     secrets:
@@ -80,6 +87,23 @@ jobs:
       run: |
         curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.3/cloud-sql-proxy.linux.amd64
         chmod +x cloud-sql-proxy
+
+    - name: Set up gcloud
+      if: inputs.saas_api_key_secret != ''
+      uses: google-github-actions/setup-gcloud@v3
+
+    - name: Read SaaS billing API key
+      if: inputs.saas_api_key_secret != ''
+      env:
+        SECRET_NAME: ${{ inputs.saas_api_key_secret }}
+      run: |
+        KEY=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT_ID" 2>/dev/null || true)
+        if [ -n "$KEY" ]; then
+          echo "::add-mask::$KEY"
+          echo "APP_BILLING_API_KEY=$KEY" >> "$GITHUB_ENV"
+        else
+          echo "::warning::Could not read secret $SECRET_NAME — API key check will be skipped"
+        fi
 
     - name: Run verification
       env:

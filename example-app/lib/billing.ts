@@ -94,6 +94,15 @@ const DEFAULT_SUBSCRIPTION: SubscriptionStatusResponse = {
   status: "trialing",
 };
 
+export class BillingAuthError extends Error {
+  constructor(status: number) {
+    super(
+      `Billing service rejected BILLING_API_KEY (HTTP ${status}) — the key doesn't match this app's key in Lyrian`,
+    );
+    this.name = "BillingAuthError";
+  }
+}
+
 // JWT and Portal
 export function createBillingToken(
   userId: string,
@@ -192,6 +201,9 @@ export async function getSubscriptionStatus({
       },
     });
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new BillingAuthError(response.status);
+      }
       const errorBody = await response
         .text()
         .catch(() => "Unable to read error body");
@@ -222,6 +234,7 @@ export async function getSubscriptionStatus({
     }
     return parsed.data;
   } catch (error) {
+    if (error instanceof BillingAuthError) throw error;
     log.error(
       { error: error instanceof Error ? error.message : error },
       "Failed to fetch subscription status",
