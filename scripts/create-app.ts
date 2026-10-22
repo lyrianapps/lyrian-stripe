@@ -232,6 +232,8 @@ async function main() {
       where: { id: appId },
       // On update: only patch credentials — never overwrite the API key or plans
       update: {
+        // Rows auto-created by session/checkout/usage upserts have no key yet.
+        ...(isUpdate ? {} : { apiKey }),
         resendApiKey,
         fromEmail,
         stripeSecretKey,
