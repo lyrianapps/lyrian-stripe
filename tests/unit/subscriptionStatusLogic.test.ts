@@ -128,6 +128,24 @@ describe("isExpired", () => {
     ).toBe(false);
   });
 
+  it("returns true for immediately canceled subscription (accessEndsAt passed, period not over)", () => {
+    expect(
+      isExpired(
+        sub({ status: "canceled", currentPeriodEnd: FUTURE, accessEndsAt: PAST }),
+        NOW,
+      ),
+    ).toBe(true);
+  });
+
+  it("returns false for canceled subscription whose accessEndsAt is still ahead", () => {
+    expect(
+      isExpired(
+        sub({ status: "canceled", currentPeriodEnd: FUTURE, accessEndsAt: FUTURE }),
+        NOW,
+      ),
+    ).toBe(false);
+  });
+
   it("uses the provided now timestamp, not the system clock", () => {
     const wayInFuture = new Date("2099-01-01");
     // active with future period end — would expire relative to 2099

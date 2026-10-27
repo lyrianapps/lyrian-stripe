@@ -19,7 +19,7 @@ import {
  *
  * Responses:
  * - Active:   { plan: "pro", status: "active" }
- * - Expired:  { plan: "free_trial", status: "expired", expiredAt: "...", previousPlan: "pro" }
+ * - Expired:  { plan: "free_trial", status: "expired", expiredAt: "...", previousPlan: "pro", previousStatus: "canceled" }
  * - Default:  { plan: "free_trial", status: "trialing" }  (unknown user or no subscription)
  */
 
@@ -62,8 +62,9 @@ function buildExpiredResponse(subscription: SubscriptionRow) {
   return NextResponse.json({
     plan: "free_trial" as Plan,
     status: "expired",
-    expiredAt: subscription.currentPeriodEnd,
+    expiredAt: subscription.accessEndsAt ?? subscription.currentPeriodEnd,
     previousPlan: subscription.plan,
+    previousStatus: subscription.status,
   });
 }
 

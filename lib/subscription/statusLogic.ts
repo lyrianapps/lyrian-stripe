@@ -35,6 +35,12 @@ export function selectBestSubscription(
  * stale on records created before the webhook stored items.data[0].current_period_end.
  */
 export function isExpired(subscription: SubscriptionRow, now: Date): boolean {
+  // Immediate cancels (e.g. refund + cancel) end before currentPeriodEnd.
+  if (subscription.status === "canceled") {
+    const accessEnd =
+      subscription.accessEndsAt ?? subscription.currentPeriodEnd;
+    return accessEnd <= now;
+  }
   return (
     subscription.status !== "active" && subscription.currentPeriodEnd < now
   );
