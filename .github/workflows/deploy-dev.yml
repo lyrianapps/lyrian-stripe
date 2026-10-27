@@ -16,7 +16,8 @@ jobs:
   test:
     # Skip PRs opened from forks so outside contributors can't run code on our CI.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    # Playwright 1.58 doesn't support ubuntu-latest (26.04) yet.
+    runs-on: ubuntu-24.04
     environment: development
     services:
       postgres:

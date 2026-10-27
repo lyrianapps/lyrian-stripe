@@ -11,7 +11,8 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Playwright 1.58 doesn't support ubuntu-latest (26.04) yet.
+    runs-on: ubuntu-24.04
     environment: stage
     services:
       postgres:
