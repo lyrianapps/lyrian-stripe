@@ -28,6 +28,10 @@ on:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   delete-app:
     runs-on: ubuntu-latest
@@ -75,7 +79,9 @@ jobs:
     - name: Google Auth
       uses: google-github-actions/auth@v2
       with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        workload_identity_provider: projects/494926016713/locations/global/workloadIdentityPools/github/providers/github
+        # Must match the GitHub environment -> service account bindings in the WIF pool.
+        service_account: ${{ inputs.environment == 'prod' && 'lyrian-stripe-prod@lyrian-billing.iam.gserviceaccount.com' || inputs.environment == 'stage' && 'lyrian-stripe-stage@lyrian-billing.iam.gserviceaccount.com' || 'github-actions-deploy@lyrian-billing.iam.gserviceaccount.com' }}
 
     - name: Install Cloud SQL Auth Proxy
       run: |

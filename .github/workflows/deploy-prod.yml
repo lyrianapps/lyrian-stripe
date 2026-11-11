@@ -9,6 +9,10 @@ env:
   SERVICE_NAME: lyrian-stripe-prod
   REPO_NAME: lyrian-stripe
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   test:
     # Playwright 1.58 doesn't support ubuntu-latest (26.04) yet.
@@ -90,7 +94,8 @@ jobs:
     - name: Google Auth
       uses: google-github-actions/auth@v2
       with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        workload_identity_provider: projects/494926016713/locations/global/workloadIdentityPools/github/providers/github
+        service_account: lyrian-stripe-prod@lyrian-billing.iam.gserviceaccount.com
 
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
@@ -138,7 +143,8 @@ jobs:
     - name: Google Auth
       uses: google-github-actions/auth@v2
       with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        workload_identity_provider: projects/494926016713/locations/global/workloadIdentityPools/github/providers/github
+        service_account: lyrian-stripe-prod@lyrian-billing.iam.gserviceaccount.com
 
     - name: Install Cloud SQL Auth Proxy
       run: |
@@ -181,7 +187,8 @@ jobs:
     - name: Google Auth
       uses: google-github-actions/auth@v2
       with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        workload_identity_provider: projects/494926016713/locations/global/workloadIdentityPools/github/providers/github
+        service_account: lyrian-stripe-prod@lyrian-billing.iam.gserviceaccount.com
 
     - name: Install Cloud SQL Auth Proxy
       run: |
